@@ -1,0 +1,15 @@
+{
+  "name": "drclaudiamaciel-site",
+  "description": "Site institucional da Dra. Claudia Maciel - Ginecologista & Obstetra (Bonito/MS)",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "docker:build": "docker compose build",
+    "deploy": "docker compose up -d --build"
+  }
+}

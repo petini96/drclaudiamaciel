@@ -1,0 +1,21 @@
+name: drclaudiamaciel
+
+services:
+  site:
+    build:
+      context: .
+      args:
+        SITE_URL: ${SITE_URL:-https://drclaudiamaciel.com.br}
+    image: drclaudiamaciel-site:latest
+    container_name: drclaudiamaciel-site
+    restart: always
+    # O Traefik desta infra usa network_mode: host + file provider,
+    # entao publicamos a porta apenas no loopback e roteamos via
+    # deploy/traefik/drclaudiamaciel.yml.
+    ports:
+      - "127.0.0.1:${HOST_PORT:-8091}:80"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

@@ -1,0 +1,14 @@
+.git
+.gitignore
+.github
+.openai
+dist
+node_modules
+deploy/traefik
+docker-compose.yml
+Dockerfile
+.dockerignore
+.env
+.env.*
+*.md
+*.log

@@ -1,0 +1,24 @@
+# Copie este arquivo para /home/deployer/infra/traefik/dynamic/drclaudiamaciel.yml
+# O file provider do Traefik (providers.file.directory + watch) carrega todos os
+# .yml do diretorio, sem precisar editar o routes.yml existente.
+http:
+  routers:
+    drclaudiamaciel:
+      rule: "Host(`drclaudiamaciel.com.br`) || Host(`www.drclaudiamaciel.com.br`)"
+      entryPoints: [websecure]
+      tls: { certResolver: le }
+      middlewares: [drclaudiamaciel-www-redirect]
+      service: drclaudiamaciel
+
+  middlewares:
+    drclaudiamaciel-www-redirect:
+      redirectRegex:
+        regex: "^https?://www\\.drclaudiamaciel\\.com\\.br/(.*)"
+        replacement: "https://drclaudiamaciel.com.br/${1}"
+        permanent: true
+
+  services:
+    drclaudiamaciel:
+      loadBalancer:
+        servers:
+          - url: "http://127.0.0.1:8091"

@@ -1,0 +1,16 @@
+.photoArch:after{inset:18px;border-color:rgba(255,255,255,.55)}
+.photoArch img{width:100%;height:100%;object-fit:cover;object-position:center 22%}
+.intro{grid-template-columns:.55fr 1fr;align-items:center}
+.aboutPhoto{height:520px;overflow:hidden;border-radius:220px 220px 18px 18px;box-shadow:0 24px 60px rgba(73,40,50,.12)}
+.aboutPhoto img{width:100%;height:100%;object-fit:cover;object-position:center 18%}
+.gallery{padding:110px clamp(24px,7vw,110px);background:#fff}
+.photoGrid{display:grid;grid-template-columns:1fr 1.18fr 1fr;gap:18px;align-items:center}
+.photoGrid figure{margin:0;height:470px;overflow:hidden;border-radius:180px 180px 18px 18px}
+.photoGrid figure.featured{height:570px}
+.photoGrid img{width:100%;height:100%;object-fit:cover;object-position:center top;transition:transform .5s}
+.photoGrid figure:hover img{transform:scale(1.035)}
+.contactDetails{display:flex;flex-direction:column;gap:8px;margin-top:22px}
+.contactDetails a{color:#fff;text-decoration:none;font-size:13px}
+.contactDetails a:hover{text-decoration:underline}
+@media(max-width:850px){.intro{grid-template-columns:1fr}.aboutPhoto{height:520px;max-width:420px;margin:auto}.photoGrid{grid-template-columns:repeat(3,1fr)}.photoGrid figure,.photoGrid figure.featured{height:430px}}
+@media(max-width:560px){.gallery{padding:75px 24px}.photoGrid{grid-template-columns:1fr}.photoGrid figure,.photoGrid figure.featured{height:430px;border-radius:150px 150px 16px 16px}.aboutPhoto{height:440px}}
