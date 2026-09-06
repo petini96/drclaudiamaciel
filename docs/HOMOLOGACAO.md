@@ -1,0 +1,165 @@
+# Ambiente de homologação — `hom.drclaudiamaciel.com.br`
+
+Um segundo deploy do mesmo repositório, na branch `hom`, para validar mudanças
+antes de irem para produção. Roda no mesmo servidor, no mesmo Traefik, mas com
+projeto Compose, container, imagem e porta separados — subir homologação nunca
+toca no site que está no ar.
+
+| | Produção | Homologação |
+|---|---|---|
+| Domínio | `drclaudiamaciel.com.br` | `hom.drclaudiamaciel.com.br` |
+| Branch | `main` | `hom` |
+| Porta (loopback) | 8091 | 8092 |
+| Projeto Compose | `drclaudiamaciel` | `drclaudiamaciel-hom` |
+| Container | `drclaudiamaciel-site` | `drclaudiamaciel-site-hom` |
+| Imagem | `drclaudiamaciel-site:latest` | `drclaudiamaciel-site:hom` |
+| `SITE_ENV` | `prod` | `hom` |
+| Propriedade GA4 | produção | homologação (outra propriedade) |
+| Indexável | sim | **não**, em 4 camadas |
+| Acesso | público | Basic Auth |
+
+---
+
+## As 4 camadas contra indexação
+
+Nenhuma sozinha é suficiente, e a ordem importa: as três últimas são *pedidos*
+ao buscador, e só a primeira é uma garantia técnica.
+
+| # | Onde | O que faz | Por que existe |
+|---|---|---|---|
+| 1 | Traefik — `basicAuth` | Devolve **401** sem credencial | Única camada que não depende da boa vontade do robô. Sem conteúdo acessível, não há o que indexar. |
+| 2 | nginx — `X-Robots-Tag` | Header `noindex, nofollow, noarchive, nosnippet` | Vale para **todo arquivo** (`.webp`, `.xml`, `.txt`), não só para o HTML. Ligado por *host*, não por build — sobrevive a um erro de roteamento. |
+| 3 | build — `<meta name="robots">` | `noindex,nofollow,noarchive,nosnippet` no HTML | Redundância barata; é o sinal que as ferramentas de auditoria checam. |
+| 4 | build — `robots.txt` | `Disallow: /`, sem `Sitemap:` | Corta o rastreamento na porta de entrada. O `sitemap.xml` **não é gerado** fora de produção. |
+
+O `X-Robots-Tag` do nginx usa **lista de permissão invertida**: só
+`drclaudiamaciel.com.br` e `www.drclaudiamaciel.com.br` saem sem o header;
+qualquer outro host recebe `noindex`. Foi escolhido nesse sentido de propósito —
+se um dia alguém apontar `hom.*` para o container de produção, ou publicar um
+domínio novo, o pior caso é "ainda não indexou", nunca "indexou o ambiente
+errado". **Ao adicionar um domínio de produção novo, inclua-o nesse `map` em
+[`deploy/nginx.conf`](../deploy/nginx.conf).**
+
+O `build.mjs` também recusa a combinação `SITE_ENV=prod` com uma `SITE_URL`
+começando em `hom.` — o build falha em vez de gerar um HTML indexável apontando
+para homologação.
+
+---
+
+## Subir pela primeira vez
+
+### 1. DNS
+
+Registro `A` de `hom.drclaudiamaciel.com.br` apontando para o IP do servidor.
+O ACME TLS-ALPN precisa do DNS já resolvendo para emitir o certificado.
+
+Não existe `www.hom.*`: seria mais um registro, mais um SAN no certificado e
+mais um redirect para manter, sem ninguém para digitar esse endereço.
+
+> O `drclaudiamaciel-security` de produção aplica HSTS com
+> `includeSubDomains` + `preload`. Isso já cobre `hom.*` — por isso não há
+> middleware de HSTS duplicado aqui. Como consequência, o subdomínio **precisa**
+> servir HTTPS válido, o que o `certResolver: le` resolve.
+
+### 2. Senha do Basic Auth
+
+O arquivo **não pode** ficar em `dynamic/` — o file provider do Traefik tenta
+interpretar o que encontra lá. Gere um nível acima:
+
+```bash
+htpasswd -Bc /home/deployer/infra/traefik/hom.htpasswd claudia
+```
+
+Sem o `apache2-utils` instalado:
+
+```bash
+docker run --rm httpd:alpine htpasswd -nbB claudia 'SENHA' | sudo tee /home/deployer/infra/traefik/hom.htpasswd
+```
+
+Confirme que o caminho existe **dentro** do container:
+
+```bash
+docker exec traefik ls -l /etc/traefik/hom.htpasswd
+```
+
+Se o `usersFile` não existir, o Traefik devolve 500 em `hom.*` — falha fechada,
+que é o comportamento certo para um ambiente que não deveria ficar exposto. Se
+o seu mapeamento de volume for outro, ajuste o `usersFile` em
+[`deploy/traefik/drclaudiamaciel-hom.yml`](../deploy/traefik/drclaudiamaciel-hom.yml).
+
+### 3. Rota no Traefik
+
+```bash
+sudo cp deploy/traefik/drclaudiamaciel-hom.yml /home/deployer/infra/traefik/dynamic/
+```
+
+`providers.file.watch=true`, então entra sem restart.
+
+> Router, middlewares e service usam o sufixo `-hom` justamente para não colidir
+> com os de `drclaudiamaciel.yml`. O file provider carrega todos os `.yml` do
+> diretório num **único namespace**: nomes repetidos entre arquivos fazem o
+> Traefik descartar uma das definições — e você acabaria com homologação
+> servindo produção, ou pior.
+
+### 4. Container
+
+Em um diretório separado do de produção:
+
+```bash
+git clone <repo> drclaudiamaciel-hom && cd drclaudiamaciel-hom
+git checkout hom
+cp .env.hom.example .env
+# edite o .env: preencha GA_MEASUREMENT_ID com a propriedade GA4 de homologação
+docker compose up -d --build
+```
+
+### 5. Conferir
+
+```bash
+curl -I https://hom.drclaudiamaciel.com.br
+```
+
+Esperado: **401** e `X-Robots-Tag: noindex, nofollow, noarchive, nosnippet`.
+
+```bash
+curl -I -u claudia:SENHA https://hom.drclaudiamaciel.com.br
+```
+
+Esperado: **200**, o mesmo `X-Robots-Tag`, e no HTML
+`<meta name="robots" content="noindex,nofollow,noarchive,nosnippet">`.
+
+E que produção continua limpa:
+
+```bash
+curl -I https://drclaudiamaciel.com.br | grep -i robots   # não deve retornar nada
+```
+
+---
+
+## Atualizar homologação
+
+```bash
+git pull && docker compose up -d --build
+```
+
+## Promover para produção
+
+```bash
+git checkout main && git merge hom && git push
+# no diretório de produção do servidor:
+git pull && docker compose up -d --build
+```
+
+Antes de promover, confirme que `GA_MEASUREMENT_ID` no `.env` de **produção**
+aponta para a propriedade GA4 de produção, não para a de homologação.
+
+---
+
+## Rodar o ambiente de homologação localmente
+
+```bash
+SITE_ENV=hom SITE_URL=https://hom.drclaudiamaciel.com.br GA_MEASUREMENT_ID=G-XXXX npm run dev
+```
+
+Sem variáveis nenhumas, o `npm run dev` roda como `SITE_ENV=dev`: também
+`noindex`, também com o selo de ambiente, e sem Google Analytics.

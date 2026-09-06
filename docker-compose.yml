@@ -1,4 +1,7 @@
-name: drclaudiamaciel
+# Um unico compose para os dois ambientes. O que muda entre producao e
+# homologacao vive no .env (veja .env.example e .env.hom.example), nunca aqui —
+# assim nao ha dois arquivos para manter em sincronia.
+name: ${COMPOSE_PROJECT_NAME:-drclaudiamaciel}
 
 services:
   site:
@@ -6,12 +9,19 @@ services:
       context: .
       args:
         SITE_URL: ${SITE_URL:-https://drclaudiamaciel.com.br}
-    image: drclaudiamaciel-site:latest
-    container_name: drclaudiamaciel-site
+        # prod | hom. Decide meta robots, robots.txt, sitemap e o selo de ambiente.
+        SITE_ENV: ${SITE_ENV:-prod}
+        # Vazio = nenhum Google Analytics na pagina. Producao e homologacao usam
+        # propriedades diferentes do GA4, entao IDs diferentes.
+        GA_MEASUREMENT_ID: ${GA_MEASUREMENT_ID:-}
+    # Tag propria por ambiente: sem isso, o build de homologacao sobrescreveria a
+    # imagem :latest que producao usa no proximo restart.
+    image: drclaudiamaciel-site:${IMAGE_TAG:-latest}
+    container_name: ${CONTAINER_NAME:-drclaudiamaciel-site}
     restart: always
     # O Traefik desta infra usa network_mode: host + file provider,
     # entao publicamos a porta apenas no loopback e roteamos via
-    # deploy/traefik/drclaudiamaciel.yml.
+    # deploy/traefik/drclaudiamaciel.yml (8091) e -hom.yml (8092).
     ports:
       - "127.0.0.1:${HOST_PORT:-8091}:80"
     logging:

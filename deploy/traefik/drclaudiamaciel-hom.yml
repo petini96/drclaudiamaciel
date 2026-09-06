@@ -1,0 +1,60 @@
+# Rota do ambiente de HOMOLOGACAO — hom.drclaudiamaciel.com.br
+#
+# Copie para /home/deployer/infra/traefik/dynamic/drclaudiamaciel-hom.yml
+#
+# ATENCAO aos nomes: o file provider do Traefik carrega TODOS os .yml do
+# diretorio num unico namespace. Router, middleware e service aqui usam o
+# sufixo "-hom" justamente para nao colidir com os de drclaudiamaciel.yml —
+# nomes repetidos entre arquivos fazem o Traefik descartar uma das definicoes.
+#
+# E a porta e 8092, o container proprio de homologacao. Apontar para 8091
+# (producao) faria hom.* servir o site de producao, que e o oposto do objetivo.
+http:
+  routers:
+    drclaudiamaciel-hom:
+      # Sem www.hom.*: seria mais um registro de DNS, mais um SAN no certificado
+      # e mais um redirect para manter, sem ninguem para digitar esse endereco.
+      rule: "Host(`hom.drclaudiamaciel.com.br`)"
+      entryPoints: [websecure]
+      tls: { certResolver: le }
+      # A ORDEM IMPORTA: o middleware de header vem primeiro para envolver o de
+      # autenticacao. Assim ate a resposta 401 (que interrompe a cadeia) sai com
+      # o X-Robots-Tag. Invertido, o 401 sairia sem header nenhum.
+      middlewares: [drclaudiamaciel-hom-noindex, drclaudiamaciel-hom-auth]
+      service: drclaudiamaciel-hom
+
+  middlewares:
+    # Camada 1 (a unica que e uma garantia, e nao um pedido): sem credencial, o
+    # Googlebot recebe 401 e nao ha o que indexar. As diretivas noindex dependem
+    # de o buscador escolher obedece-las; um 401 nao depende de ninguem.
+    #
+    # O arquivo de senhas NAO pode ficar em dynamic/ — o file provider tenta
+    # interpretar o que encontra la. Gere um nivel acima:
+    #
+    #   htpasswd -Bc /home/deployer/infra/traefik/hom.htpasswd claudia
+    #
+    # (sem o apache2-utils: docker run --rm httpd:alpine htpasswd -nbB usuario senha)
+    #
+    # Confirme que o caminho existe DENTRO do container antes de recarregar:
+    #
+    #   docker exec traefik ls -l /etc/traefik/hom.htpasswd
+    #
+    # Se o arquivo faltar, o Traefik devolve 500 em hom.* — falha fechada, que e
+    # o comportamento certo para um ambiente que nao deveria ficar exposto.
+    drclaudiamaciel-hom-auth:
+      basicAuth:
+        usersFile: "/etc/traefik/hom.htpasswd"
+        realm: "Homologacao - Dra. Claudia Maciel"
+        # Nao repassa o header Authorization para o nginx: a credencial morre aqui.
+        removeHeader: true
+
+    drclaudiamaciel-hom-noindex:
+      headers:
+        customResponseHeaders:
+          X-Robots-Tag: "noindex, nofollow, noarchive, nosnippet"
+
+  services:
+    drclaudiamaciel-hom:
+      loadBalancer:
+        servers:
+          - url: "http://127.0.0.1:8092"

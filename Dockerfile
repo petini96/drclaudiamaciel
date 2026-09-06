@@ -6,8 +6,13 @@ COPY build.mjs site.html ./
 COPY src ./src
 COPY assets ./assets
 
+# O ambiente entra por build arg porque o HTML e estatico: meta robots,
+# robots.txt, sitemap e o Measurement ID do GA4 sao decididos no build, nao em
+# runtime. Consequencia pratica: producao e homologacao sao imagens diferentes.
 ARG SITE_URL=https://drclaudiamaciel.com.br
-ENV SITE_URL=$SITE_URL
+ARG SITE_ENV=prod
+ARG GA_MEASUREMENT_ID=
+ENV SITE_URL=$SITE_URL SITE_ENV=$SITE_ENV GA_MEASUREMENT_ID=$GA_MEASUREMENT_ID
 RUN node build.mjs
 
 # --- runtime: nginx servindo estatico ---

@@ -5,6 +5,7 @@ dist/
 .env
 .env.*
 !.env.example
+!.env.*.example
 
 # Restos do hosting da OpenAI (nao usado em producao)
 .openai/
@@ -13,3 +14,8 @@ dist/
 npm-debug.log*
 Thumbs.db
 .DS_Store
+
+# Relatorios do Lighthouse
+lh/
+*.report.html
+*.report.json

@@ -1,37 +1,535 @@
-import { mkdir, readFile, writeFile, stat, rm } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, stat, rm, copyFile } from 'node:fs/promises';
 import { gzipSync } from 'node:zlib';
+import { site } from './src/site-data.js';
 
-const siteUrl = (process.env.SITE_URL || 'https://drclaudiamaciel.com.br').replace(/\/+$/, '');
+const siteUrl = (process.env.SITE_URL || site.url).replace(/\/+$/, '');
+site.url = siteUrl;
+
+// --- ambiente ---------------------------------------------------------------
+// prod = drclaudiamaciel.com.br, indexavel pelo Google.
+// hom  = hom.drclaudiamaciel.com.br, bloqueado para buscadores (ver README).
+// dev  = npm run dev; o scripts/dev.mjs define este valor sozinho.
+const ENVS = ['prod', 'hom', 'dev'];
+const siteEnv = (process.env.SITE_ENV || 'prod').trim();
+if (!ENVS.includes(siteEnv)) throw new Error(`SITE_ENV invalido: "${siteEnv}" (use ${ENVS.join(' | ')})`);
+const isProd = siteEnv === 'prod';
+
+// Trava de seguranca. "Build indexavel apontando para a URL de homologacao" e
+// exatamente o acidente que faz o Google indexar hom.* como duplicata do site
+// real — e desindexar depois custa semanas. Falhar o build aqui e mais barato.
+if (isProd && /^https?:\/\/hom\./i.test(siteUrl)) {
+  throw new Error(`SITE_ENV=prod com SITE_URL de homologacao (${siteUrl}). Use SITE_ENV=hom.`);
+}
+if (siteEnv === 'hom' && !/^https?:\/\/hom\./i.test(siteUrl)) {
+  console.warn(`AVISO: SITE_ENV=hom com SITE_URL "${siteUrl}" — esperado um host comecando com "hom.".`);
+}
+
+// Vazio = nenhum Google Analytics na pagina. Producao e homologacao usam
+// propriedades diferentes do GA4, entao o ID nunca fica no codigo.
+const gaId = (process.env.GA_MEASUREMENT_ID || '').trim();
+if (gaId && !/^G-[A-Z0-9]{4,}$/.test(gaId)) {
+  throw new Error(`GA_MEASUREMENT_ID invalido: "${gaId}" (formato esperado: G-XXXXXXXXXX)`);
+}
+
 const imageNames = ['claudia-hero', 'claudia-retrato', 'claudia-rosa', 'consultorio', 'claudia-verde'];
 
-await rm('dist', { recursive: true, force: true });
-await mkdir('dist', { recursive: true });
+const esc = (s) =>
+  String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-const html = await readFile('site.html', 'utf8');
-const css = `${await readFile('src/styles.css', 'utf8')}\n${await readFile('src/photos.css', 'utf8')}`;
+/** Le largura/altura direto do header WebP: evita CLS sem depender de libs. */
+function webpSize(buf) {
+  const fmt = buf.toString('ascii', 12, 16);
+  if (fmt === 'VP8X') return { w: buf.readUIntLE(24, 3) + 1, h: buf.readUIntLE(27, 3) + 1 };
+  if (fmt === 'VP8 ') return { w: buf.readUInt16LE(26) & 0x3fff, h: buf.readUInt16LE(28) & 0x3fff };
+  if (fmt === 'VP8L') {
+    const [b0, b1, b2, b3] = [buf[21], buf[22], buf[23], buf[24]];
+    return { w: (((b1 & 0x3f) << 8) | b0) + 1, h: (((b3 & 0xf) << 10) | (b2 << 2) | ((b1 & 0xc0) >> 6)) + 1 };
+  }
+  throw new Error(`Formato WebP nao reconhecido: ${fmt}`);
+}
 
-let page = html.replace('/*__STYLES__*/', css);
+// IMPORTANTE: nada e escrito em dist/ ate a validacao de placeholders passar
+// (mais abaixo). Se o `rm` viesse antes, um build quebrado apagaria o site e
+// deixaria dist/ vazio — o que, com o servidor de dev rodando, derruba a
+// pagina inteira ate o erro ser corrigido.
+
+// --- imagens como arquivos reais -------------------------------------------
+// Ficam fora do HTML (em vez de base64) por tres motivos de SEO: o Google
+// Images so indexa URLs reais, og:image/Twitter exigem URL absoluta, e o HTML
+// cai de ~240 KB para ~40 KB, o que adianta o First Contentful Paint.
+const images = {};
 for (const name of imageNames) {
   const bytes = await readFile(`assets/${name}.webp`);
+  const { w, h } = webpSize(bytes);
+  images[name] = { path: `assets/${name}.webp`, url: `${siteUrl}/assets/${name}.webp`, w, h };
+}
+
+// --- blocos de conteudo gerados a partir do site-data ----------------------
+const serviceCards = site.services
+  .map(
+    (s, i) =>
+      `<article class="card"><span class="num">${String(i + 1).padStart(2, '0')}</span>` +
+      `<div class="icon" aria-hidden="true">${s.icon}</div>` +
+      `<h3>${esc(s.name)}</h3><p>${esc(s.description)}</p>` +
+      `<a href="#contato">Agendar consulta <span aria-hidden="true">&rarr;</span></a></article>`,
+  )
+  .join('');
+
+const faqList = site.faq
+  .map(
+    (f, i) =>
+      `<details class="faqItem"${i === 0 ? ' open' : ''}><summary><span>${esc(f.q)}</span>` +
+      `<b aria-hidden="true"></b></summary><p>${esc(f.a)}</p></details>`,
+  )
+  .join('');
+
+// --- dados estruturados (JSON-LD) ------------------------------------------
+const { address: addr, geo, phone } = site.business;
+const fullAddress = `${addr.street} — ${addr.district}, ${addr.city}-${addr.stateCode}`;
+const mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+  `${addr.street}, ${addr.district}, ${addr.city}, ${addr.stateCode}`,
+)}`;
+const hero = images[site.seo.ogImage];
+
+// Horario legivel para a pagina, derivado do MESMO array que alimenta o
+// openingHoursSpecification — o Google compara os dois e penaliza divergencia.
+const DAY_PT = { Monday: 'segunda', Tuesday: 'terça', Wednesday: 'quarta', Thursday: 'quinta', Friday: 'sexta', Saturday: 'sábado', Sunday: 'domingo' };
+const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+const hhmm = (t) => (t.endsWith(':00') ? `${Number(t.slice(0, 2))}h` : `${Number(t.slice(0, 2))}h${t.slice(3)}`);
+
+function humanHours(spec) {
+  if (!spec.length) return '';
+  const groups = new Map();
+  for (const h of spec) {
+    const key = h.days.join(',');
+    if (!groups.has(key)) groups.set(key, { days: h.days, ranges: [] });
+    groups.get(key).ranges.push(`${hhmm(h.opens)}–${hhmm(h.closes)}`);
+  }
+  return [...groups.values()]
+    .map(({ days, ranges }) => {
+      const label =
+        days.length === 5 && WEEKDAYS.every((d) => days.includes(d))
+          ? 'Segunda a sexta'
+          : days.map((d) => DAY_PT[d]).join(', ').replace(/^./, (c) => c.toUpperCase());
+      return `${label}, ${ranges.join(' e ')}`;
+    })
+    .join('; ');
+}
+
+const hoursText = humanHours(site.business.openingHours);
+
+const doctorIds = [];
+if (site.doctor.crm) doctorIds.push({ '@type': 'PropertyValue', name: 'CRM', value: site.doctor.crm });
+if (site.doctor.rqe) doctorIds.push({ '@type': 'PropertyValue', name: 'RQE', value: site.doctor.rqe });
+
+const postalAddress = {
+  '@type': 'PostalAddress',
+  streetAddress: addr.street,
+  addressLocality: addr.city,
+  addressRegion: addr.stateCode,
+  postalCode: addr.postalCode,
+  addressCountry: addr.country,
+};
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'WebSite',
+      '@id': `${siteUrl}/#website`,
+      url: `${siteUrl}/`,
+      name: site.business.name,
+      inLanguage: site.locale,
+      publisher: { '@id': `${siteUrl}/#practice` },
+    },
+    {
+      '@type': ['Physician', 'MedicalClinic', 'LocalBusiness'],
+      '@id': `${siteUrl}/#practice`,
+      name: site.business.name,
+      alternateName: [site.business.shortName, site.doctor.legalName],
+      url: `${siteUrl}/`,
+      description: site.seo.description,
+      image: { '@id': `${siteUrl}/#primaryimage` },
+      logo: hero.url,
+      telephone: phone.e164,
+      address: postalAddress,
+      geo: { '@type': 'GeoCoordinates', latitude: geo.lat, longitude: geo.lng },
+      hasMap: mapUrl,
+      medicalSpecialty: ['Obstetric', 'Gynecologic'],
+      knowsLanguage: site.locale,
+      sameAs: site.doctor.profiles,
+      areaServed: site.business.areaServed.map((c) => ({
+        '@type': 'City',
+        name: c,
+        address: { '@type': 'PostalAddress', addressRegion: addr.stateCode, addressCountry: addr.country },
+      })),
+      availableService: site.services.map((s) => ({
+        '@type': 'MedicalProcedure',
+        name: s.name,
+        description: s.description,
+      })),
+      ...(site.business.openingHours.length
+        ? {
+            openingHoursSpecification: site.business.openingHours.map((h) => ({
+              '@type': 'OpeningHoursSpecification',
+              dayOfWeek: h.days,
+              opens: h.opens,
+              closes: h.closes,
+            })),
+          }
+        : {}),
+      employee: { '@id': `${siteUrl}/#physician` },
+      potentialAction: {
+        '@type': 'ReserveAction',
+        name: 'Agendar consulta',
+        target: {
+          '@type': 'EntryPoint',
+          urlTemplate: `https://wa.me/${phone.e164.replace('+', '')}`,
+          inLanguage: site.locale,
+          actionPlatform: ['https://schema.org/DesktopWebPlatform', 'https://schema.org/MobileWebPlatform'],
+        },
+      },
+    },
+    {
+      '@type': 'Person',
+      '@id': `${siteUrl}/#physician`,
+      name: site.doctor.fullName,
+      // O nome de registro aparece nos diretorios medicos; declara-lo aqui liga
+      // este site aos perfis do Doctoralia/agenda.app.br na mesma entidade.
+      alternateName: site.doctor.legalName,
+      givenName: site.doctor.name.split(' ')[0],
+      honorificPrefix: site.doctor.honorificPrefix,
+      jobTitle: site.doctor.jobTitle,
+      url: `${siteUrl}/#sobre`,
+      image: images['claudia-retrato'].url,
+      worksFor: { '@id': `${siteUrl}/#practice` },
+      workLocation: postalAddress,
+      telephone: phone.e164,
+      sameAs: site.doctor.profiles,
+      knowsAbout: site.services.map((s) => s.name),
+      ...(doctorIds.length ? { identifier: doctorIds } : {}),
+    },
+    {
+      '@type': 'ImageObject',
+      '@id': `${siteUrl}/#primaryimage`,
+      url: hero.url,
+      contentUrl: hero.url,
+      width: hero.w,
+      height: hero.h,
+      caption: `${site.doctor.fullName}, ${site.doctor.jobTitle.toLowerCase()} em ${addr.city}-${addr.stateCode}`,
+    },
+    {
+      '@type': 'WebPage',
+      '@id': `${siteUrl}/#webpage`,
+      url: `${siteUrl}/`,
+      name: site.seo.title,
+      description: site.seo.description,
+      isPartOf: { '@id': `${siteUrl}/#website` },
+      about: { '@id': `${siteUrl}/#practice` },
+      primaryImageOfPage: { '@id': `${siteUrl}/#primaryimage` },
+      inLanguage: site.locale,
+      breadcrumb: { '@id': `${siteUrl}/#breadcrumb` },
+    },
+    {
+      '@type': 'BreadcrumbList',
+      '@id': `${siteUrl}/#breadcrumb`,
+      itemListElement: [{ '@type': 'ListItem', position: 1, name: 'Início', item: `${siteUrl}/` }],
+    },
+    {
+      '@type': 'FAQPage',
+      '@id': `${siteUrl}/#faq`,
+      inLanguage: site.locale,
+      isPartOf: { '@id': `${siteUrl}/#webpage` },
+      mainEntity: site.faq.map((f) => ({
+        '@type': 'Question',
+        name: f.q,
+        acceptedAnswer: { '@type': 'Answer', text: f.a },
+      })),
+    },
+  ],
+};
+
+// --- <head> -----------------------------------------------------------------
+const fontsHref =
+  'https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@500;600&display=swap';
+
+const headSeo = [
+  `<title>${esc(site.seo.title)}</title>`,
+  `<meta name="description" content="${esc(site.seo.description)}">`,
+  `<link rel="canonical" href="${siteUrl}/">`,
+  // Fora de producao a diretiva e invertida. Esta e a 2a das 4 camadas que
+  // impedem a indexacao de homologacao (as outras: Basic Auth no Traefik,
+  // X-Robots-Tag no nginx e o robots.txt logo abaixo).
+  isProd
+    ? `<meta name="robots" content="index,follow,max-snippet:-1,max-image-preview:large,max-video-preview:-1">`
+    : `<meta name="robots" content="noindex,nofollow,noarchive,nosnippet">`,
+  isProd
+    ? `<meta name="googlebot" content="index,follow,max-snippet:-1,max-image-preview:large">`
+    : `<meta name="googlebot" content="noindex,nofollow,noarchive,nosnippet">`,
+  `<meta name="keywords" content="${esc(site.seo.keywords.join(', '))}">`,
+  `<meta name="author" content="${esc(site.doctor.fullName)}">`,
+  `<meta name="theme-color" content="${site.themeColor}">`,
+  `<meta name="color-scheme" content="light">`,
+  `<meta name="format-detection" content="telephone=no">`,
+  // Sinais de geolocalizacao para busca local.
+  `<meta name="geo.region" content="${addr.country}-${addr.stateCode}">`,
+  `<meta name="geo.placename" content="${esc(addr.city)}">`,
+  `<meta name="geo.position" content="${geo.lat};${geo.lng}">`,
+  `<meta name="ICBM" content="${geo.lat}, ${geo.lng}">`,
+  // Open Graph.
+  `<meta property="og:type" content="website">`,
+  `<meta property="og:site_name" content="${esc(site.business.name)}">`,
+  `<meta property="og:locale" content="pt_BR">`,
+  `<meta property="og:url" content="${siteUrl}/">`,
+  `<meta property="og:title" content="${esc(site.seo.title)}">`,
+  `<meta property="og:description" content="${esc(site.seo.description)}">`,
+  `<meta property="og:image" content="${hero.url}">`,
+  `<meta property="og:image:type" content="image/webp">`,
+  `<meta property="og:image:width" content="${hero.w}">`,
+  `<meta property="og:image:height" content="${hero.h}">`,
+  `<meta property="og:image:alt" content="${esc(site.doctor.fullName)}, ${esc(site.doctor.jobTitle.toLowerCase())} em ${esc(addr.city)}-${addr.stateCode}">`,
+  // Twitter/X.
+  `<meta name="twitter:card" content="summary_large_image">`,
+  `<meta name="twitter:title" content="${esc(site.seo.title)}">`,
+  `<meta name="twitter:description" content="${esc(site.seo.description)}">`,
+  `<meta name="twitter:image" content="${hero.url}">`,
+  // Icones + manifest (o Google exige favicon para exibir o icone na SERP mobile).
+  `<link rel="icon" href="/favicon.svg" type="image/svg+xml">`,
+  `<link rel="mask-icon" href="/favicon.svg" color="${site.themeColor}">`,
+  `<link rel="manifest" href="/site.webmanifest">`,
+  // LCP: o hero comeca a baixar junto com o HTML.
+  `<link rel="preload" as="image" href="${hero.path}" fetchpriority="high">`,
+  // Fontes sem bloquear a renderizacao.
+  `<link rel="preconnect" href="https://fonts.googleapis.com">`,
+  `<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>`,
+  `<link rel="preload" as="style" href="${fontsHref}">`,
+  `<link rel="stylesheet" href="${fontsHref}" media="print" onload="this.media='all'">`,
+  `<noscript><link rel="stylesheet" href="${fontsHref}"></noscript>`,
+  `<script type="application/ld+json">${JSON.stringify(jsonLd).replace(/</g, '\\u003c')}</script>`,
+].join('');
+
+// --- selo de ambiente -------------------------------------------------------
+// Existe para que ninguem aprove/reporte bug olhando para o ambiente errado.
+const envBadge = isProd
+  ? ''
+  : `<div class="envBadge">${siteEnv === 'hom' ? 'Homologação &middot; não indexado' : 'Ambiente local'}</div>`;
+// O selo e position:fixed, entao o aviso de cookies precisa saber que ele
+// existe para nao se sobrepor a ele nas telas estreitas.
+const bodyAttr = isProd ? '' : ' class="hasEnvBadge"';
+
+// --- Google Analytics 4 + Consent Mode v2 (LGPD) ----------------------------
+// Modo "basico": os sinais de consentimento sao declarados como `denied` antes
+// de qualquer tag, e o gtag.js so e BAIXADO depois do aceite. Assim, quem nao
+// consente nao gera nenhuma requisicao ao Google — nem os pings sem cookie do
+// modo avancado. Para uma pagina de medica no Brasil e a leitura mais segura da
+// LGPD, e de quebra nao custa um request de terceiro no carregamento inicial.
+// (Como trocar para o modo avancado: docs/ANALYTICS.md.)
+const analyticsHead = gaId
+  ? `<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}` +
+    `gtag('consent','default',{ad_storage:'denied',ad_user_data:'denied',ad_personalization:'denied',` +
+    `analytics_storage:'denied',functionality_storage:'granted',security_storage:'granted'});` +
+    `window.__ga={id:${JSON.stringify(gaId)},debug:${!isProd}};</script>`
+  : '';
+
+const c = site.analytics.consent;
+
+const consentBanner = gaId
+  ? `<aside class="consent" id="consent" role="region" aria-label="Aviso de cookies" hidden>` +
+    `<p>${esc(c.text)} <a href="#privacidade">${esc(c.more)}</a>.</p>` +
+    `<div class="consentActions">` +
+    `<button type="button" data-consent="denied">${esc(c.reject)}</button>` +
+    `<button type="button" data-consent="granted">${esc(c.accept)}</button>` +
+    `</div></aside>` +
+    `<script>(function(){var K='cm-consent',box=document.getElementById('consent');` +
+    // O localStorage lanca excecao em modo restrito/iframe de terceiro; sem o
+    // try o script inteiro morre e a pagina fica sem menu e sem FAQ.
+    `function get(){try{return localStorage.getItem(K)}catch(e){return null}}` +
+    `function set(v){try{localStorage.setItem(K,v)}catch(e){}}` +
+    `function load(){if(window.__gaLoaded)return;window.__gaLoaded=1;` +
+    `gtag('consent','update',{analytics_storage:'granted'});` +
+    `var s=document.createElement('script');s.async=1;` +
+    `s.src='https://www.googletagmanager.com/gtag/js?id='+window.__ga.id;document.head.appendChild(s);` +
+    `gtag('js',new Date());gtag('config',window.__ga.id,{anonymize_ip:true,debug_mode:window.__ga.debug});}` +
+    `function choose(v){set(v);box.hidden=true;if(v==='granted')load()}` +
+    `box.querySelectorAll('button').forEach(function(b){b.onclick=function(){choose(b.dataset.consent)}});` +
+    `var saved=get();if(saved==='granted')load();else if(saved!=='denied')box.hidden=false;` +
+    // Revogar precisa ser tao facil quanto consentir (LGPD, art. 8o, §5o).
+    `var r=document.getElementById('consentReset');if(r)r.onclick=function(){` +
+    `try{localStorage.removeItem(K)}catch(e){}box.hidden=false;` +
+    `box.scrollIntoView({block:'nearest'})};` +
+    // Conversao do site: so existem dois caminhos de contato, WhatsApp e telefone.
+    `document.addEventListener('click',function(e){` +
+    `var a=e.target.closest?e.target.closest('a[href^="https://wa.me/"],a[href^="tel:"]'):null;` +
+    `if(!a||!window.__gaLoaded)return;` +
+    `gtag('event','generate_lead',{method:a.getAttribute('href').indexOf('tel:')===0?'telefone':'whatsapp'})});` +
+    `})();</script>`
+  : '';
+
+// --- politica de privacidade ------------------------------------------------
+// Um banner de consentimento sem politica acessivel nao cumpre a LGPD. Fica
+// como secao desta mesma pagina (o site e single page: uma rota /privacidade
+// exigiria mexer em nginx, canonical, sitemap e breadcrumb).
+const pv = site.privacy;
+const pvVars = { '{telefone}': esc(phone.display), '{endereco}': esc(fullAddress) };
+const pvText = (s) => Object.entries(pvVars).reduce((acc, [k, v]) => acc.split(k).join(v), esc(s));
+const pvDate = pv.updated.split('-').reverse().join('/');
+
+const privacySection =
+  `<details class="privacy" id="privacidade"><summary><span>${esc(pv.title)}</span>` +
+  `<b aria-hidden="true"></b></summary>` +
+  `<p class="privacyLead">${pvText(pv.summary)}</p>` +
+  `<p class="privacyUpdated">Última atualização: ${pvDate}</p>` +
+  `<div class="privacyBody">` +
+  pv.sections
+    .map((s) => `<h3>${esc(s.title)}</h3>${s.paragraphs.map((p) => `<p>${pvText(p)}</p>`).join('')}`)
+    .join('') +
+  (gaId
+    ? `<p><button type="button" id="consentReset" class="consentReset">Alterar minha preferência de cookies</button></p>`
+    : '') +
+  `</div></details>`;
+
+// --- montagem do HTML -------------------------------------------------------
+const html = await readFile('site.html', 'utf8');
+const cssFiles = ['src/styles.css', 'src/photos.css', 'src/env-ui.css'];
+const css = (await Promise.all(cssFiles.map((f) => readFile(f, 'utf8')))).join('\n');
+
+// O separador precisa ficar fora do esc(), senao o "&" de &middot; e escapado
+// e a entidade aparece literal na pagina. O separador da esquerda tambem entra
+// aqui para nao sobrar solto quando o CRM estiver vazio.
+const crmLine = site.doctor.crm
+  ? ` &middot; <span class="crm">${[site.doctor.crm, site.doctor.rqe].filter(Boolean).map(esc).join(' &middot; ')}</span>`
+  : '';
+
+let page = html
+  .replace('/*__STYLES__*/', css)
+  .replaceAll('__HEAD_SEO__', headSeo)
+  .replaceAll('__ANALYTICS_HEAD__', analyticsHead)
+  .replaceAll('__ENV_BADGE__', envBadge)
+  .replaceAll('__BODY_ATTR__', bodyAttr)
+  .replaceAll('__CONSENT_BANNER__', consentBanner)
+  .replaceAll('__PRIVACY_SECTION__', privacySection)
+  .replaceAll('__SERVICE_CARDS__', serviceCards)
+  .replaceAll('__FAQ_LIST__', faqList)
+  .replaceAll('__CRM__', crmLine)
+  .replaceAll('__PHONE_DISPLAY__', esc(phone.display))
+  .replaceAll('__PHONE_E164__', phone.e164)
+  .replaceAll('__WHATSAPP_URL__', `https://wa.me/${phone.e164.replace('+', '')}?text=${encodeURIComponent(site.business.whatsappText)}`)
+  .replaceAll('__OPENING_HOURS__', hoursText ? `<span><b>Horário:</b> ${esc(hoursText)}</span>` : '')
+  .replaceAll('__ADDRESS_FULL__', esc(fullAddress))
+  .replaceAll('__ADDRESS_STREET__', esc(addr.street))
+  .replaceAll('__ADDRESS_CITY__', esc(`${addr.district}, ${addr.city}-${addr.stateCode}`))
+  .replaceAll('__MAP_URL__', esc(mapUrl))
+  .replaceAll('__AREA_SERVED__', site.business.areaServed.map((c) => `<li>${esc(c)}</li>`).join(''));
+
+for (const [name, img] of Object.entries(images)) {
   const token = `__${name.toUpperCase().replaceAll('-', '_')}__`;
-  page = page.replaceAll(token, `data:image/webp;base64,${bytes.toString('base64')}`);
+  page = page.replaceAll(token, `src="${img.path}" width="${img.w}" height="${img.h}"`);
 }
 
 const leftovers = page.match(/__[A-Z_]+__|\/\*__STYLES__\*\//g);
 if (leftovers) throw new Error(`Placeholders nao substituidos: ${[...new Set(leftovers)].join(', ')}`);
 
+// A partir daqui nao ha mais nada que possa falhar por conteudo — so agora
+// dist/ e recriado (ver comentario no topo).
+await rm('dist', { recursive: true, force: true });
+await mkdir('dist/assets', { recursive: true });
+for (const name of imageNames) await copyFile(`assets/${name}.webp`, `dist/assets/${name}.webp`);
+
 await writeFile('dist/index.html', page);
-// Pre-comprime para o nginx servir via gzip_static (o HTML carrega as imagens em base64).
+// Pre-comprime para o nginx servir via gzip_static.
 await writeFile('dist/index.html.gz', gzipSync(Buffer.from(page), { level: 9 }));
 
-const lastmod = (await stat('site.html')).mtime.toISOString().slice(0, 10);
-await writeFile('dist/robots.txt', `User-agent: *\nAllow: /\n\nSitemap: ${siteUrl}/sitemap.xml\n`);
+// --- arquivos auxiliares ----------------------------------------------------
+// lastmod = a mais recente entre as duas fontes de conteudo. Usar so o
+// site.html deixaria a data velha quando a edicao fosse apenas no site-data.js.
+const sources = await Promise.all(['site.html', 'src/site-data.js'].map((f) => stat(f)));
+const lastmod = new Date(Math.max(...sources.map((s) => s.mtime))).toISOString().slice(0, 10);
+
 await writeFile(
-  'dist/sitemap.xml',
-  `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n  <url>\n    <loc>${siteUrl}/</loc>\n    <lastmod>${lastmod}</lastmod>\n    <changefreq>monthly</changefreq>\n  </url>\n</urlset>\n`,
+  'dist/robots.txt',
+  isProd
+    ? [
+        'User-agent: *',
+        'Allow: /',
+        '',
+        '# Bots de IA/LLM tambem sao trafego de descoberta — liberados de proposito.',
+        'User-agent: GPTBot',
+        'Allow: /',
+        '',
+        'User-agent: Google-Extended',
+        'Allow: /',
+        '',
+        `Sitemap: ${siteUrl}/sitemap.xml`,
+        '',
+      ].join('\n')
+    : [
+        `# Ambiente de ${siteEnv}. Nao ha nada aqui para indexar.`,
+        'User-agent: *',
+        'Disallow: /',
+        '',
+      ].join('\n'),
+);
+
+// Sitemap so em producao: um sitemap em homologacao e um convite explicito para
+// o Googlebot rastrear o ambiente errado.
+if (isProd) {
+  const sitemapImages = Object.values(images)
+    .map((i) => `    <image:image><image:loc>${i.url}</image:loc></image:image>`)
+    .join('\n');
+
+  await writeFile(
+    'dist/sitemap.xml',
+    `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
+  <url>
+    <loc>${siteUrl}/</loc>
+    <lastmod>${lastmod}</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>1.0</priority>
+${sitemapImages}
+  </url>
+</urlset>
+`,
+  );
+}
+
+await writeFile(
+  'dist/site.webmanifest',
+  JSON.stringify(
+    {
+      name: site.business.name,
+      short_name: site.business.shortName,
+      description: site.seo.description,
+      lang: site.locale,
+      start_url: '/',
+      scope: '/',
+      display: 'standalone',
+      background_color: '#fbf8f3',
+      theme_color: site.themeColor,
+      icons: [{ src: '/favicon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' }],
+    },
+    null,
+    2,
+  ),
+);
+
+await writeFile(
+  'dist/favicon.svg',
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="${site.themeColor}"/><circle cx="32" cy="32" r="25" fill="none" stroke="#c78f98" stroke-width="1.5"/><text x="32" y="41" text-anchor="middle" font-family="Georgia,'Times New Roman',serif" font-size="26" letter-spacing="1" fill="#fbf8f3">CM</text></svg>`,
+);
+
+// Pagina 404 real: sem ela o nginx devolveria o index com status 200 em qualquer
+// URL inexistente (soft 404), o que o Google trata como erro de qualidade.
+await writeFile(
+  'dist/404.html',
+  `<!doctype html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,follow"><title>Página não encontrada | ${esc(site.business.shortName)}</title><link rel="icon" href="/favicon.svg" type="image/svg+xml"><style>body{margin:0;min-height:100vh;display:grid;place-items:center;text-align:center;padding:32px;background:#fbf8f3;color:#30272a;font-family:system-ui,-apple-system,'Segoe UI',sans-serif}h1{font:500 clamp(32px,6vw,52px)/1.1 Georgia,serif;color:${site.themeColor};margin:0 0 14px}p{color:#75696c;max-width:420px;margin:0 auto 26px;line-height:1.7}a{display:inline-block;background:${site.themeColor};color:#fff;text-decoration:none;padding:15px 24px;border-radius:999px;font-weight:700;font-size:14px}</style></head><body><main><h1>Página não encontrada</h1><p>O endereço que você acessou não existe ou foi movido. Volte para a página inicial para conhecer o atendimento da ${esc(site.doctor.fullName)}.</p><a href="/">Ir para a página inicial</a></main></body></html>`,
 );
 
 const kb = (n) => `${(n / 1024).toFixed(1)} KB`;
 console.log(`dist/index.html    ${kb(Buffer.byteLength(page))}`);
 console.log(`dist/index.html.gz ${kb((await stat('dist/index.html.gz')).size)}`);
+console.log(`dist/assets/       ${imageNames.length} imagens`);
 console.log(`site url           ${siteUrl}`);
+console.log(`ambiente           ${siteEnv}${isProd ? ' (indexavel)' : ' (noindex + robots.txt Disallow)'}`);
+console.log(`analytics          ${gaId ? `${gaId}${isProd ? '' : ' + debug_mode'}` : 'desligado (GA_MEASUREMENT_ID vazio)'}`);
+if (!site.doctor.crm) console.warn('AVISO: src/site-data.js -> doctor.crm vazio (exigido pelo CFM na publicidade medica).');

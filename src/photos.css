@@ -9,8 +9,9 @@
 .photoGrid figure.featured{height:570px}
 .photoGrid img{width:100%;height:100%;object-fit:cover;object-position:center top;transition:transform .5s}
 .photoGrid figure:hover img{transform:scale(1.035)}
-.contactDetails{display:flex;flex-direction:column;gap:8px;margin-top:22px}
-.contactDetails a{color:#fff;text-decoration:none;font-size:13px}
+.contactDetails{display:flex;flex-direction:column;gap:8px;margin-top:22px;font-style:normal}
+.contactDetails a,.contactDetails>span{color:#fff;text-decoration:none;font-size:13px}
+.contactDetails b{font-weight:700;color:#e7bdc3;margin-right:4px}
 .contactDetails a:hover{text-decoration:underline}
 @media(max-width:850px){.intro{grid-template-columns:1fr}.aboutPhoto{height:520px;max-width:420px;margin:auto}.photoGrid{grid-template-columns:repeat(3,1fr)}.photoGrid figure,.photoGrid figure.featured{height:430px}}
 @media(max-width:560px){.gallery{padding:75px 24px}.photoGrid{grid-template-columns:1fr}.photoGrid figure,.photoGrid figure.featured{height:430px;border-radius:150px 150px 16px 16px}.aboutPhoto{height:440px}}

@@ -7,15 +7,26 @@ http:
       rule: "Host(`drclaudiamaciel.com.br`) || Host(`www.drclaudiamaciel.com.br`)"
       entryPoints: [websecure]
       tls: { certResolver: le }
-      middlewares: [drclaudiamaciel-www-redirect]
+      middlewares: [drclaudiamaciel-www-redirect, drclaudiamaciel-security]
       service: drclaudiamaciel
 
   middlewares:
+    # Canonicalizacao de dominio: uma unica versao indexavel (sem www).
     drclaudiamaciel-www-redirect:
       redirectRegex:
         regex: "^https?://www\\.drclaudiamaciel\\.com\\.br/(.*)"
         replacement: "https://drclaudiamaciel.com.br/${1}"
         permanent: true
+
+    # HSTS: o Google usa HTTPS como sinal de ranqueamento e o preload elimina o
+    # salto http->https na primeira visita (menos latencia = melhor Core Web Vitals).
+    # Só ative includeSubDomains/preload quando TODOS os subdominios forem HTTPS.
+    drclaudiamaciel-security:
+      headers:
+        stsSeconds: 31536000
+        stsIncludeSubdomains: true
+        stsPreload: true
+        forceSTSHeader: true
 
   services:
     drclaudiamaciel:

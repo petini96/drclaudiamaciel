@@ -8,6 +8,7 @@
     "node": ">=20"
   },
   "scripts": {
+    "dev": "node scripts/dev.mjs",
     "build": "node build.mjs",
     "docker:build": "docker compose build",
     "deploy": "docker compose up -d --build"
