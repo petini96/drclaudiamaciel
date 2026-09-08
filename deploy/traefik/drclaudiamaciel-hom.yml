@@ -28,22 +28,26 @@ http:
     # Googlebot recebe 401 e nao ha o que indexar. As diretivas noindex dependem
     # de o buscador escolher obedece-las; um 401 nao depende de ninguem.
     #
-    # O arquivo de senhas NAO pode ficar em dynamic/ — o file provider tenta
-    # interpretar o que encontra la. Gere um nivel acima:
+    # O arquivo de senhas fica DENTRO de dynamic/ porque, neste servidor, e o
+    # unico diretorio montado no container do Traefik (junto com o socket e o
+    # letsencrypt). Um caminho um nivel acima — /etc/traefik/hom.htpasswd —
+    # simplesmente nao existe la dentro, e o basicAuth falharia sempre.
     #
-    #   htpasswd -Bc /home/deployer/infra/traefik/hom.htpasswd claudia
+    # Ficar em dynamic/ e seguro: o file provider so interpreta .yml, .yaml e
+    # .toml; qualquer outra extensao e ignorada.
     #
-    # (sem o apache2-utils: docker run --rm httpd:alpine htpasswd -nbB usuario senha)
+    #   docker run --rm httpd:alpine htpasswd -nbB claudia 'SENHA' \
+    #     > /home/deployer/infra/traefik/dynamic/hom.htpasswd
     #
     # Confirme que o caminho existe DENTRO do container antes de recarregar:
     #
-    #   docker exec traefik ls -l /etc/traefik/hom.htpasswd
+    #   docker exec traefik ls -l /etc/traefik/dynamic/hom.htpasswd
     #
     # Se o arquivo faltar, o Traefik devolve 500 em hom.* — falha fechada, que e
     # o comportamento certo para um ambiente que nao deveria ficar exposto.
     drclaudiamaciel-hom-auth:
       basicAuth:
-        usersFile: "/etc/traefik/hom.htpasswd"
+        usersFile: "/etc/traefik/dynamic/hom.htpasswd"
         realm: "Homologacao - Dra. Claudia Maciel"
         # Nao repassa o header Authorization para o nginx: a credencial morre aqui.
         removeHeader: true

@@ -56,6 +56,13 @@ O ACME TLS-ALPN precisa do DNS já resolvendo para emitir o certificado.
 Não existe `www.hom.*`: seria mais um registro, mais um SAN no certificado e
 mais um redirect para manter, sem ninguém para digitar esse endereço.
 
+> ⚠️ **Não acrescente `www.hom.*` à regra do router sem criar o DNS junto.**
+> Com `tlsChallenge`, o Let's Encrypt valida **todos** os domínios do
+> certificado: um único SAN que não resolve derruba a emissão inteira, e
+> `hom.*` fica sem certificado mesmo tendo DNS correto. O sintoma é
+> `NXDOMAIN looking up A for www.hom...` no log do Traefik e a conexão
+> falhando no TLS (`curl` devolve `000`).
+
 > O `drclaudiamaciel-security` de produção aplica HSTS com
 > `includeSubDomains` + `preload`. Isso já cobre `hom.*` — por isso não há
 > middleware de HSTS duplicado aqui. Como consequência, o subdomínio **precisa**
@@ -63,23 +70,25 @@ mais um redirect para manter, sem ninguém para digitar esse endereço.
 
 ### 2. Senha do Basic Auth
 
-O arquivo **não pode** ficar em `dynamic/` — o file provider do Traefik tenta
-interpretar o que encontra lá. Gere um nível acima:
+O arquivo fica **dentro** de `dynamic/`. Esse é o ponto que mais gera confusão:
+o container do Traefik monta apenas três caminhos — o socket do Docker,
+`./dynamic:/etc/traefik/dynamic:ro` e `./letsencrypt`. Um `usersFile` apontando
+para `/etc/traefik/hom.htpasswd` (um nível acima) referencia um caminho que
+**não existe dentro do container**, e o `basicAuth` falha sempre.
+
+Ficar em `dynamic/` é seguro: o file provider só interpreta `.yml`, `.yaml` e
+`.toml`; qualquer outra extensão é ignorada.
 
 ```bash
-htpasswd -Bc /home/deployer/infra/traefik/hom.htpasswd claudia
-```
-
-Sem o `apache2-utils` instalado:
-
-```bash
-docker run --rm httpd:alpine htpasswd -nbB claudia 'SENHA' | sudo tee /home/deployer/infra/traefik/hom.htpasswd
+docker run --rm httpd:alpine htpasswd -nbB claudia 'SENHA' \
+  > /home/deployer/infra/traefik/dynamic/hom.htpasswd
+chmod 644 /home/deployer/infra/traefik/dynamic/hom.htpasswd
 ```
 
 Confirme que o caminho existe **dentro** do container:
 
 ```bash
-docker exec traefik ls -l /etc/traefik/hom.htpasswd
+docker exec traefik ls -l /etc/traefik/dynamic/hom.htpasswd
 ```
 
 Se o `usersFile` não existir, o Traefik devolve 500 em `hom.*` — falha fechada,
