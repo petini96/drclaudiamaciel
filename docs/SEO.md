@@ -194,9 +194,11 @@ rastreabilidade:
 - *Skip link*, `aria-expanded` no menu, `:focus-visible` visível
 - `<address>` para o NAP, `<ol>` na jornada, `<ul>` nos selos, `<nav aria-label>`
 - `scroll-margin-top` para o header fixo não cobrir o alvo das âncoras
-- `prefers-reduced-motion`
+- `prefers-reduced-motion` — respeitado em duas camadas: as durações são zeradas no CSS
+  **e** o script que habilita as animações nem aplica a classe `motion` quando a
+  preferência está ligada (ver §7.2)
 - `rel="noopener"` em todos os `target="_blank"`
-- Hierarquia de títulos correta: 1 `h1`, 6 `h2`, 9 `h3`
+- Hierarquia de títulos correta: 1 `h1`, 7 `h2`, 9 `h3`
 
 ### Correções da auditoria de acessibilidade
 
@@ -224,6 +226,80 @@ comando não encontra o elemento.
 
 > Este audit tem **peso 0** no Lighthouse: corrigi-lo não altera a nota. Foi corrigido
 > porque o problema para o usuário é real, não porque pontuava.
+
+### 7.1 Seção "Formação e atuação" (E-E-A-T)
+
+Saúde é **YMYL** (*Your Money or Your Life*), a categoria em que o Google pesa mais
+credencial verificável. Antes desta seção, os únicos sinais de autoridade da página eram o
+CRM no rodapé e o texto de apresentação — nada que o algoritmo (ou a paciente) pudesse
+conferir. A seção `#formacao` expõe registro profissional, título de especialista, áreas de
+atuação e local de atendimento, e alimenta `hasCredential` no nó `Person` do JSON-LD:
+
+```
+identifier    -> QUAL é o número (CRM/MS 5944, RQE 4352)
+hasCredential -> o que ele SIGNIFICA e QUEM o reconhece (CRM-MS, CFM)
+```
+
+Os dois vêm do mesmo `site-data.js` que gera os cartões visíveis, então o dado estruturado
+e o que a paciente lê nunca divergem — divergência entre os dois é penalizada.
+
+**Duas coisas que não podem entrar nesta seção**, nem em nenhuma outra: **depoimento de
+paciente** e **imagem de "antes e depois"**. As normas do CFM sobre publicidade médica
+(Res. 1.974/2011 e atualizações) proíbem as duas. É a razão pela qual o site não tem — e
+não deve ganhar — uma seção de depoimentos, apesar de ser o padrão em landing page de
+serviço. Credencial inflada ou não conferível tem o mesmo problema, com o agravante de
+derrubar a confiança do domínio inteiro na busca.
+
+### 7.2 Animações sem custo de SEO
+
+A regra que sustenta tudo em `src/motion.css`: **nenhum conteúdo começa invisível no HTML
+entregue.** O estado inicial das revelações (`opacity:0`) só existe descendo de
+`html.motion`, e essa classe é aplicada por um script inline no `<head>`. Sem JS, com JS
+quebrado ou com "reduzir movimento" ligado no sistema, a classe nunca aparece e a página
+renderiza inteira. Se o `opacity:0` morasse direto no CSS, todo o conteúdo abaixo da dobra
+chegaria ao Googlebot oculto — o tipo de sinal que num site de saúde não vale o risco.
+
+Sobre Core Web Vitals:
+
+| Métrica | Cuidado tomado |
+|---|---|
+| **LCP** | A entrada do hero é só `transform`, nunca `opacity` — o Chrome ignora elementos com `opacity:0` ao eleger o Largest Contentful Paint, então um fade empurraria a métrica para o fim da animação. `translate`/`scale` não afetam a medição: os pixels são pintados no primeiro frame. **Exceção: o `<h1>`** (ver abaixo). |
+| **CLS** | Nada anima propriedade de layout. O header ganha sombra no scroll, não altura. O aviso de cookies é `position:fixed`. |
+| **INP** | Zero listener de `scroll`. A sombra do header vem de um sentinela de 1px observado por `IntersectionObserver`, e cada elemento revelado sofre `unobserve` em seguida. |
+| **Peso** | +3,1 KB gzipped na home (a maior parte é a seção nova, não a animação); +0,3 KB em `/privacidade`. Nenhuma requisição nova: o CSS é inline e o JS são duas peças de ~700 B. Os comentários de CSS e de HTML agora são removidos no build, o que devolveu ~4 KB por página. |
+
+#### A manchete "escrita" e o LCP
+
+As palavras do `<h1>` aparecem em sequência, com um cursor que salta de uma para a outra
+(uma vez por carregamento). É a única animação do site que usa `opacity` num elemento de
+conteúdo do hero, e foi uma decisão consciente:
+
+- **O texto completo está no HTML entregue.** O `build.mjs` (`typeWords`) só envolve cada
+  palavra num `<span>` com o índice em `--w`; o CSS controla *quando* cada uma fica
+  visível. Escrever o H1 com JS deixaria o elemento mais importante da página para o Google
+  dependente de script para existir.
+- **O elemento de LCP desta página é a foto do hero**, não a manchete — ela é maior em todos
+  os breakpoints, continua `preload`ada com `fetchpriority="high"` e não tem fade nenhum.
+  A animação da manchete, portanto, não entra na medição.
+- **A manchete inteira termina em ~1,8 s** (a última palavra começa a aparecer em 1,62 s,
+  mais 0,22 s de fade). Mesmo no cenário pessimista em que ela fosse o elemento de LCP, o
+  valor fica dentro da faixa "boa" (< 2,5 s). O `npm run build` **imprime esse número a
+  cada rodada** (`manchete  1.62s de escrita`), justamente para ele não crescer sem
+  ninguém ver.
+- **O atraso é absoluto a partir do primeiro paint, e corre em paralelo com a rede.** Ele
+  só pode ser o gargalo quando a conexão é rápida — e aí 1,8 s é um LCP bom. Numa conexão
+  lenta, quem manda é o download da foto, e a animação não custa nada.
+
+O ritmo não é constante: cada palavra recebe do build o seu próprio tempo, derivado do
+número de letras mais uma hesitação depois de vírgula ou ponto, com um desvio de ±14%
+determinístico (derivado das letras da própria palavra, para o build seguir reproduzível).
+Cadência fixa era o que fazia o efeito parecer máquina. Os parâmetros são `CHAR_MS`,
+`WORD_MS`, `PAUSE` e `LEAD_MS` no `build.mjs` — **não** no CSS, para não haver a mesma
+constante em dois arquivos.
+
+> ⚠️ Se a foto sair do hero, ou se a manchete crescer muito, isto precisa ser reavaliado —
+> aí ela passa a ser candidata a LCP e a animação entra na conta. O aviso está repetido no
+> comentário de `src/motion.css`, onde quem for mexer vai olhar.
 
 **Alvo do *skip link*** — `#inicio` é uma `<section>`, elemento não focável. Chrome e
 Firefox movem o ponto de partida da tabulação assim mesmo, mas Safari antigo e alguns
@@ -332,10 +408,12 @@ NAP inconsistente é o que mais trava SEO local:
 
 | Arquivo | Mudança |
 |---|---|
-| `src/site-data.js` | **novo** — NAP, SEO, serviços e FAQ |
-| `build.mjs` | Gera meta tags, JSON-LD, cards, FAQ, sitemap, robots, manifest, favicon e 404 |
-| `site.html` | H1 com palavra-chave, conteúdo ampliado, HTML semântico e acessível; `aria-label` dos links corrigidos, `tabindex="-1"` no alvo do skip link |
+| `src/site-data.js` | **novo** — NAP, SEO, serviços, formação e FAQ |
+| `build.mjs` | Gera meta tags, JSON-LD, cards, formação, FAQ, sitemap, robots, manifest, favicon e 404; remove comentários do CSS no bundle |
+| `site.html` | H1 com palavra-chave, conteúdo ampliado, HTML semântico e acessível; `aria-label` dos links corrigidos, `tabindex="-1"` no alvo do skip link; seção `#formacao` (§7.1) |
 | `src/styles.css`, `src/photos.css` | Estilos dos novos elementos, foco visível, reduced-motion, contraste de cor em conformidade com WCAG AA |
+| `src/credentials.css` | **novo** — visual da seção "Formação e atuação" |
+| `src/motion.css` | **novo** — animações e micro-interações, sem custo de LCP/CLS/INP (§7.2) |
 | `deploy/nginx.conf` | Cache por rota, 404 real, `/favicon.ico`, gzip ajustado |
 | `deploy/traefik/drclaudiamaciel.yml` | HSTS |
 | `.gitignore` | Ignora relatórios do Lighthouse (`lh/`, `*.report.html`, `*.report.json`) |

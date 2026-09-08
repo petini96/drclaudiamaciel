@@ -1,0 +1,295 @@
+﻿/* Movimento — entra nas DUAS paginas (home e /privacidade), porque metade das
+   micro-interacoes vive no header e no rodape, que sao compartilhados.
+
+   Tres regras guiam este arquivo. Vale ler antes de mexer:
+
+   1) SEO — nenhum conteudo comeca invisivel no HTML entregue. O estado inicial
+      das revelacoes ("opacity:0") so existe descendo de `html.motion`, e essa
+      classe e aplicada por um script inline no <head> (build.mjs -> motionHead).
+      Sem JS, com JS quebrado ou com "reduzir movimento" ligado, a classe nunca
+      aparece e a pagina renderiza inteira e visivel. Se o estado inicial
+      morasse direto no CSS, todo o conteudo abaixo da dobra chegaria ao
+      Googlebot com opacity:0 — exatamente o que nao se faz num site de saude,
+      onde o Google e mais rigoroso com conteudo oculto.
+
+   2) LCP — a entrada do hero e SO transform, nunca opacity. O Chrome ignora
+      elementos com opacity:0 ao eleger o Largest Contentful Paint, entao um
+      fade na foto empurraria a metrica para o fim da animacao. translate/scale
+      nao afetam a medicao: os pixels sao pintados no 1o frame.
+      UNICA EXCECAO: a manchete escrita (secao "manchete escrita" abaixo), que
+      foi pedida e tem o proprio bloco de justificativa. A foto do hero continua
+      intocada — e ela o elemento de LCP, e e por isso que a excecao cabe.
+
+   3) Delicadeza — distancias curtas (<=22px), duracoes de 0.6-0.9s e uma unica
+      curva de easing, sem overshoot. A pagina deve parecer que "assenta", nao
+      que desliza. Nada aqui gira nem salta. A unica coisa que nao para e o
+      cursor no fim da manchete: pisca a ~1 Hz, indefinidamente, como o de
+      qualquer editor de texto. Fica muito abaixo do limite de 3 Hz que importa
+      para fotossensibilidade, e desaparece por completo com "reduzir
+      movimento" ligado no sistema — que e o que atende a WCAG 2.2.2 aqui. */
+
+:root {
+  --ease: cubic-bezier(.22, .61, .36, 1);
+  --ease-soft: cubic-bezier(.4, 0, .2, 1);
+  /* Habilita a transicao de `height:auto`, usada na resposta do FAQ. Propriedade
+     desconhecida em navegador antigo = linha ignorada, sem efeito colateral. */
+  interpolate-size: allow-keywords;
+}
+
+/* --- revelacao no scroll ---------------------------------------------------
+   `.isIn` e adicionado pelo IntersectionObserver (build.mjs -> motionBody). */
+.motion [data-reveal] {
+  opacity: 0;
+  transform: translateY(22px);
+  transition: opacity .7s var(--ease), transform .7s var(--ease);
+}
+.motion [data-reveal].isIn { opacity: 1; transform: none }
+
+/* Ninguem imprime uma pagina pela metade. */
+@media print {
+  .motion [data-reveal] { opacity: 1 !important; transform: none !important }
+}
+
+/* Escalonamento. O atraso e calculado no CSS (e nao com style="" em cada item)
+   para o HTML continuar limpo; `.stagger` marca quais listas escalonam. */
+.motion .stagger > [data-reveal] { transition-delay: calc((var(--n, 1) - 1) * 90ms) }
+.motion .stagger > :nth-child(2) { --n: 2 }
+.motion .stagger > :nth-child(3) { --n: 3 }
+.motion .stagger > :nth-child(4) { --n: 4 }
+.motion .stagger > :nth-child(5) { --n: 5 }
+.motion .stagger > :nth-child(6) { --n: 6 }
+
+/* --- entrada do hero -------------------------------------------------------
+   CSS puro, sem observer: o hero esta sempre visivel no carregamento, entao
+   esperar por JS aqui so atrasaria a animacao. Ver regra 2 no topo: `rise` nao
+   toca em opacity de proposito. */
+@keyframes rise { from { transform: translateY(20px) } to { transform: none } }
+@keyframes riseFade { from { opacity: 0; transform: translateY(20px) } to { opacity: 1; transform: none } }
+@keyframes glowIn { from { opacity: 0; transform: scale(.9) } to { opacity: 1; transform: none } }
+@keyframes breathe { to { transform: scale(1.05) translateY(-10px) } }
+
+/* O <h1> nao entra nesta lista: a manchete tem a animacao de escrita mais
+   abaixo, e as duas juntas dariam translacao dupla nas palavras (a do pai mais
+   a da propria palavra). */
+.motion .h1Kicker,
+.motion .lead,
+.motion .actions,
+.motion .trust { animation: rise .8s var(--ease) both }
+.motion .lead { animation-delay: .1s }
+.motion .actions { animation-delay: .18s }
+.motion .trust { animation-delay: .26s }
+.motion .heroArt { animation: rise .9s var(--ease) .08s both }
+/* A citacao e decorativa e nunca disputa LCP — aqui o fade e permitido. */
+.motion .quote { animation: riseFade .8s var(--ease) .55s both }
+/* O halo e um gradiente puro: gradiente nao e candidato a LCP, entao pode
+   respirar a vontade. 16s por ciclo = movimento que se sente, mas nao se ve. */
+.motion .heroGlow {
+  animation: glowIn 1.2s var(--ease-soft) both,
+             breathe 16s var(--ease-soft) 1.2s infinite alternate;
+}
+
+/* --- manchete "escrita" ----------------------------------------------------
+   As palavras do <h1> aparecem em sequencia, com um cursor que salta de uma
+   para a outra. Roda uma vez por carregamento e nunca mais — animacao de CSS
+   nao reinicia com scroll nem com navegacao por ancora.
+
+   O texto completo ja esta no HTML: o build.mjs (typeWords) so envolve cada
+   palavra num <span> proprio. Sem a classe `motion` os spans nao recebem nem
+   `display:inline-block` nem animacao, e a manchete e exatamente a de antes —
+   que e o que o Googlebot e quem desliga movimento recebem.
+
+   O RITMO nao esta neste arquivo: cada palavra chega do build com o seu proprio
+   --t (quando aparece) e --c (quanto o cursor fica parado nela). Palavra longa
+   demora mais, virgula faz hesitar. Para acelerar ou desacelerar o conjunto,
+   mexa em CHAR_MS / WORD_MS / PAUSE no build.mjs, nao aqui.
+
+   Sobre LCP: aqui a regra de "so transform" do topo e quebrada de proposito, a
+   pedido. O risco e contido porque (a) o elemento de LCP desta pagina e a foto
+   do hero, que continua preloaded, com fetchpriority=high e sem fade nenhum, e
+   (b) a manchete inteira termina em ~1,8s, dentro da faixa "boa" mesmo no
+   cenario em que ela FOSSE o elemento de LCP. Se um dia a foto sair do hero,
+   isto precisa ser reavaliado — o build imprime a duracao a cada rodada. */
+@keyframes inkIn { from { opacity: 0; transform: translateY(.09em) } to { opacity: 1; transform: none } }
+/* Piscar de cursor de verdade: periodo fixo de ~1s, independente do ritmo das
+   palavras. Os degraus de 49%/50% fazem a troca ser seca, sem fade. */
+@keyframes caretBlink { 0%, 49% { opacity: 1 } 50%, 100% { opacity: 0 } }
+/* A JANELA em que o cursor existe. Anima `visibility` — e nao `opacity` — de
+   proposito: sao duas animacoes simultaneas no mesmo elemento, e duas
+   animacoes nao podem disputar a mesma propriedade. Assim o piscar (opacity)
+   roda solto em periodo constante e esta regra so decide quando ele e visto,
+   que e o que faz o cursor parecer hesitar nas pausas em vez de congelar. */
+@keyframes caretWindow { from { visibility: visible } to { visibility: hidden } }
+/* Na ultima palavra a janela nunca fecha: 1ms so para o `forwards` ter o que
+   segurar dali em diante. E o cursor de um texto ainda aberto — pisca para
+   sempre, como em qualquer editor. */
+@keyframes caretStay { from, to { visibility: visible } }
+
+.motion .typed span {
+  position: relative;
+  display: inline-block;
+  animation: inkIn .22s var(--ease) var(--t) both;
+}
+/* position:absolute e essencial, nao estetica: no fluxo, o cursor somaria
+   ~0.12em de largura DEPOIS de cada palavra, para sempre — a manchete ficaria
+   com espacamento errado e podendo quebrar em outro ponto. Fora do fluxo,
+   custa zero de layout. */
+.motion .typed span::after {
+  content: '';
+  position: absolute;
+  left: 100%;
+  top: .12em;
+  margin-left: .07em;
+  width: .05em;
+  height: .74em;
+  background: var(--rose);
+  visibility: hidden;
+  animation: caretBlink 1.04s linear infinite,
+             caretWindow var(--c) steps(1) var(--t) forwards;
+}
+.motion .typed [data-last]::after {
+  animation: caretBlink 1.04s linear infinite,
+             caretStay 1ms steps(1) var(--t) forwards;
+}
+
+/* --- header ----------------------------------------------------------------
+   A sombra aparece so depois que a pagina sai do topo. Nada de mudar a ALTURA
+   do header no scroll: isso empurraria o conteudo e geraria CLS.
+   Quem avisa e o sentinela .navTop (1px no topo do documento, observado pelo
+   IntersectionObserver) — assim o site nao precisa de listener de scroll. */
+.navTop { height: 1px; margin-bottom: -1px }
+.nav {
+  transition: background-color .35s var(--ease-soft), box-shadow .35s var(--ease-soft),
+              border-color .35s var(--ease-soft);
+}
+.nav.isStuck {
+  background: rgba(251, 248, 243, .97);
+  box-shadow: 0 6px 28px rgba(74, 38, 51, .07);
+  border-bottom-color: rgba(104, 44, 66, .16);
+}
+
+/* --- navegacao -------------------------------------------------------------- */
+.nav nav a:not(.navCta) { position: relative; padding: 4px 0 }
+.nav nav a:not(.navCta)::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 1px;
+  background: var(--rose);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform .32s var(--ease);
+}
+.nav nav a:not(.navCta):hover::after,
+.nav nav a:not(.navCta):focus-visible::after { transform: scaleX(1) }
+.menu { transition: transform .25s var(--ease) }
+.menu:hover { transform: scale(1.1) }
+
+/* --- botoes e links --------------------------------------------------------
+   As setas (→ ↗) sao <span aria-hidden> dentro do link: dar a elas um empurrao
+   proprio no hover e o que faz o botao parecer "vivo" sem nenhum movimento
+   grande na pagina. */
+.primary, .navCta, .whiteBtn {
+  transition: transform .3s var(--ease), box-shadow .3s var(--ease), background-color .3s var(--ease);
+}
+.primary span, .navCta span, .whiteBtn span, .card a span,
+.textLink span, .contactDetails a span, footer > a span {
+  display: inline-block;
+  transition: transform .3s var(--ease);
+}
+.primary:hover, .navCta:hover, .whiteBtn:hover { transform: translateY(-2px) }
+.primary:hover, .navCta:hover { box-shadow: 0 12px 28px rgba(104, 44, 66, .26) }
+.whiteBtn:hover { box-shadow: 0 12px 28px rgba(35, 15, 22, .22) }
+.primary:hover span, .navCta:hover span, .whiteBtn:hover span, .card a:hover span { transform: translateX(4px) }
+/* Setas diagonais acompanham o proprio angulo. */
+.textLink:hover span, .contactDetails a:hover span, footer > a:hover span { transform: translate(3px, -3px) }
+
+.secondary { transition: color .3s var(--ease), border-color .3s var(--ease) }
+.secondary:hover { color: var(--wine2); border-bottom-color: var(--wine) }
+.textLink { transition: border-color .3s var(--ease) }
+.textLink:hover { border-bottom-color: var(--wine) }
+footer > a { transition: color .3s var(--ease) }
+footer > a:hover { color: var(--rose) }
+
+/* --- cartoes de cuidados ---------------------------------------------------- */
+.card {
+  transition: transform .4s var(--ease), box-shadow .4s var(--ease), border-color .4s var(--ease);
+}
+.card .icon, .card .num { transition: transform .4s var(--ease), color .3s var(--ease) }
+.card:hover .icon { transform: translateY(-3px) scale(1.08) }
+.card:hover .num { color: var(--wine) }
+
+/* --- fotos ------------------------------------------------------------------ */
+.photoGrid figure { transition: box-shadow .5s var(--ease) }
+.photoGrid figure:hover { box-shadow: 0 26px 60px rgba(74, 38, 51, .16) }
+.aboutPhoto img { transition: transform .8s var(--ease) }
+.aboutPhoto:hover img { transform: scale(1.03) }
+
+/* --- jornada ---------------------------------------------------------------- */
+.steps b { transition: transform .4s var(--ease), box-shadow .4s var(--ease) }
+.steps > li:hover b { transform: scale(1.07); box-shadow: 0 10px 24px rgba(104, 44, 66, .24) }
+/* A seta entre os passos so anima no desktop: abaixo de 560px ela ja carrega um
+   rotate(90deg) proprio, que este transform sobrescreveria. */
+@media (min-width: 561px) {
+  .steps > li:not(:last-child)::after { transition: transform .4s var(--ease), color .4s var(--ease) }
+  .steps > li:hover:not(:last-child)::after { transform: translateX(5px); color: var(--wine) }
+}
+
+/* --- FAQ -------------------------------------------------------------------
+   O "+" que virava "−" era troca de glifo (content), que nao anima. Aqui ele e
+   remontado com duas barras: ao abrir, a vertical gira e some. O <b> chega
+   vazio do build justamente para poder ser reconstruido assim. */
+.faqItem > summary { transition: color .3s var(--ease) }
+.faqItem > summary:hover { color: var(--wine) }
+.faqItem > summary b { position: relative; width: 16px; height: 16px }
+.faqItem > summary b::before,
+.faqItem > summary b::after {
+  content: '';
+  position: absolute;
+  left: 50%; top: 50%;
+  background: var(--wine);
+  border-radius: 1px;
+  transition: transform .35s var(--ease), opacity .35s var(--ease);
+}
+.faqItem > summary b::before { width: 15px; height: 1.5px; transform: translate(-50%, -50%) }
+.faqItem > summary b::after { width: 1.5px; height: 15px; transform: translate(-50%, -50%) }
+.faqItem[open] > summary b::after { transform: translate(-50%, -50%) rotate(90deg); opacity: 0 }
+.motion .faqItem[open] > p { animation: riseFade .45s var(--ease) both }
+
+/* Altura animada do <details>. So Chrome/Edge 131+ entendem ::details-content;
+   nos outros o @supports simplesmente nao entra e a abertura fica instantanea
+   (com o fade acima), que e o comportamento de hoje. */
+@supports selector(::details-content) {
+  .faqItem::details-content {
+    block-size: 0;
+    overflow: hidden;
+    transition: block-size .4s var(--ease), content-visibility .4s allow-discrete;
+  }
+  .faqItem[open]::details-content { block-size: auto }
+}
+
+/* --- contato ---------------------------------------------------------------- */
+.areaServed li { transition: background-color .3s var(--ease), border-color .3s var(--ease) }
+.areaServed li:hover { background: rgba(255, 255, 255, .13); border-color: rgba(255, 255, 255, .42) }
+.contactDetails a { transition: color .3s var(--ease) }
+.contactDetails a:hover { color: #f0cbd0 }
+
+/* --- aviso de cookies ------------------------------------------------------
+   Sobe em vez de aparecer. `position:fixed`, entao nao gera CLS. */
+@keyframes consentIn {
+  from { opacity: 0; transform: translate(-50%, 16px) }
+  to { opacity: 1; transform: translate(-50%, 0) }
+}
+.motion .consent:not([hidden]) { animation: consentIn .5s var(--ease) both }
+.consent button { transition: transform .25s var(--ease), box-shadow .25s var(--ease), background-color .25s var(--ease) }
+.consent button:hover { transform: translateY(-1px) }
+.consent button[data-consent=granted]:hover { box-shadow: 0 8px 20px rgba(104, 44, 66, .28) }
+.consent button[data-consent=denied]:hover { background: #fbf3f4 }
+
+/* --- reducao de movimento --------------------------------------------------
+   styles.css ja zera duracoes, mas nao ATRASOS: com animation-fill-mode:both,
+   um delay de 0.5s deixa o elemento congelado no estado inicial por meio
+   segundo antes de aparecer. Estas duas linhas fecham esse buraco. */
+@media (prefers-reduced-motion: reduce) {
+  * { animation-delay: 0s !important; transition-delay: 0s !important }
+  .heroGlow { animation: none !important }
+}

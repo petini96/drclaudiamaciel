@@ -17,10 +17,12 @@ faz o TLS e o roteamento.
 
 ```
 site.html                              markup (fonte da verdade do layout)
-src/site-data.js                       NAP, SEO, serviços, FAQ e política de privacidade
+src/site-data.js                       NAP, SEO, serviços, formação, FAQ e política de privacidade
 src/styles.css, src/photos.css         estilos, injetados em /*__STYLES__*/
+src/credentials.css                    seção "Formação e atuação" (só na home)
 src/env-ui.css                         selo de ambiente e aviso de cookies (as duas páginas)
 src/privacy.css                        visual de /privacidade (só nessa página)
+src/motion.css                         animações e micro-interações (sempre o ÚLTIMO do bundle)
 assets/*.webp                          imagens, copiadas para dist/assets/
 build.mjs                              gera dist/ (html, meta tags, JSON-LD, robots, sitemap, manifest, 404)
 scripts/dev.mjs                        servidor local com rebuild automático (npm run dev)
@@ -89,10 +91,33 @@ Dá para abrir o `dist/index.html` direto no navegador (as imagens usam caminho 
 mas aí o favicon e o manifest não carregam — eles usam caminho absoluto (`/favicon.svg`), que
 só resolve sob um servidor. Para conferir o site de verdade, use o `npm run dev`.
 
-Para editar **conteúdo indexável** (título, descrição, serviços, FAQ, endereço, telefone),
-mexa em `src/site-data.js`. Para layout, em `site.html`; para estilos, em `src/styles.css` /
-`src/photos.css`; para trocar fotos, substitua os `.webp` em `assets/` mantendo o nome.
-Os tokens `__NOME__` são validados no build: se algum sobrar sem substituição, o build falha.
+Para editar **conteúdo indexável** (título, descrição, serviços, formação, FAQ, endereço,
+telefone), mexa em `src/site-data.js`. Para layout, em `site.html`; para estilos, em
+`src/styles.css` / `src/photos.css`; para trocar fotos, substitua os `.webp` em `assets/`
+mantendo o nome. Os tokens `__NOME__` são validados no build: se algum sobrar sem
+substituição, o build falha.
+
+### Animações
+
+Vivem em `src/motion.css` (o cabeçalho do arquivo explica as três regras que as governam) e
+em duas peças de JS geradas pelo `build.mjs` — `motionHead` e `motionBody`. O ponto que não
+pode ser perdido de vista ao mexer nisso: **nada no HTML entregue começa invisível.** O
+estado inicial das revelações só existe descendo de `html.motion`, e essa classe é aplicada
+por um script inline no `<head>`. Sem JS, com JS quebrado ou com "reduzir movimento" ligado
+no sistema, a classe nunca aparece e a página renderiza inteira — que é o estado que o
+Googlebot precisa ver. Para animar um bloco novo, basta `data-reveal` nele (e `stagger` no
+contêiner, se os filhos devem entrar em cascata).
+
+A entrada do hero é só `transform`, nunca `opacity`: o Chrome ignora elementos com
+`opacity:0` ao eleger o Largest Contentful Paint, então um fade ali empurraria a métrica
+para o fim da animação de graça.
+
+A única exceção é a manchete "escrita" do `<h1>`. O `build.mjs` (`typeWords`) envolve cada
+palavra num `<span>` e calcula o tempo de cada uma a partir do número de letras e das
+pausas de pontuação — o texto completo continua no HTML, o CSS só decide quando cada
+palavra aparece. **Para mudar a velocidade, mexa em `CHAR_MS`, `WORD_MS`, `PAUSE` e
+`LEAD_MS` no `build.mjs`, não no CSS.** O build imprime quanto a manchete leva, e
+`docs/SEO.md` (§7.2) explica por que essa exceção cabe no orçamento de LCP.
 
 ---
 

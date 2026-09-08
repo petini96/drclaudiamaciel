@@ -68,7 +68,7 @@ for (const name of imageNames) {
 const serviceCards = site.services
   .map(
     (s, i) =>
-      `<article class="card"><span class="num">${String(i + 1).padStart(2, '0')}</span>` +
+      `<article class="card" data-reveal><span class="num">${String(i + 1).padStart(2, '0')}</span>` +
       `<div class="icon" aria-hidden="true">${s.icon}</div>` +
       `<h3>${esc(s.name)}</h3><p>${esc(s.description)}</p>` +
       `<a href="#contato">Agendar consulta <span aria-hidden="true">&rarr;</span></a></article>`,
@@ -90,6 +90,128 @@ const mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURICompo
   `${addr.street}, ${addr.district}, ${addr.city}, ${addr.stateCode}`,
 )}`;
 const hero = images[site.seo.ogImage];
+
+// --- interpolacao de texto --------------------------------------------------
+// Marcadores usados no site-data.js ({crm}, {endereco}...). Existem para que
+// nenhum texto editorial repita um dado de negocio a mao: telefone, endereco e
+// registro aparecem em varios lugares da pagina, e a copia manual e o caminho
+// mais curto para o NAP divergir entre o site, o JSON-LD e o Google Business —
+// que e justamente o par que o Google compara em busca local.
+const textVars = {
+  '{telefone}': esc(phone.display),
+  '{endereco}': esc(fullAddress),
+  '{site}': esc(siteUrl.replace(/^https?:\/\//, '')),
+  '{crm}': esc(site.doctor.crm),
+  '{rqe}': esc(site.doctor.rqe),
+};
+/** Escapa o texto e resolve os marcadores acima. */
+const fillText = (s) => Object.entries(textVars).reduce((acc, [k, v]) => acc.split(k).join(v), esc(s));
+
+// --- manchete "escrita" -----------------------------------------------------
+/**
+ * Envolve cada palavra de <span class="typed"> num <span> proprio, para o CSS
+ * poder revelar uma por vez (src/motion.css, secao "manchete escrita").
+ *
+ * Por que no build e nao a mao no site.html: quem for reescrever a manchete
+ * depois nao deveria ter que contar palavras nem numerar spans.
+ *
+ * Por que nao em JS no navegador: escrever o H1 letra por letra com script
+ * deixaria a manchete — o elemento mais importante da pagina para o Google —
+ * dependente de JS para existir. Aqui o texto completo esta no HTML entregue; o
+ * CSS so controla QUANDO cada palavra fica visivel, e apenas quando a classe
+ * `motion` autoriza (ver motionHead).
+ *
+ * Os tempos saem como custom properties inline (--t = quando a palavra aparece,
+ * --c = quanto o cursor fica parado nela) de proposito: e o que faz o ritmo
+ * acompanhar qualquer manchete. Uma regra :nth-child por palavra quebraria
+ * calada no dia em que o texto mudasse de tamanho.
+ */
+// O RITMO e o que separa "escrita" de "maquina de escrever". A primeira versao
+// revelava uma palavra a cada 68 ms fixos, e ficava mecanica: gente nao escreve
+// em cadencia constante. Estes numeros modelam o que uma pessoa faz — palavra
+// longa demora mais, e depois de virgula ou ponto ela hesita.
+const CHAR_MS = 28; // tempo de tracar cada letra
+const WORD_MS = 60; // o espaco entre duas palavras
+const PAUSE = { ',': 220, ';': 220, ':': 220, '.': 300, '!': 300, '?': 300, '—': 260 };
+const LEAD_MS = 140; // respiro antes da primeira palavra (a pessoa pega a caneta)
+
+/**
+ * Desvio de +-14% no tempo de cada palavra, para dois intervalos nunca saírem
+ * exatamente iguais — sem isso o tempo fica proporcional ao tamanho da palavra,
+ * o que ainda soa calculado.
+ *
+ * Deterministico por exigencia, nao por capricho: e derivado das letras da
+ * propria palavra, entao o mesmo site.html sempre gera os mesmos bytes. Um
+ * Math.random() aqui faria cada build produzir um dist/ diferente (e um .gz
+ * diferente), o que estraga qualquer comparacao de deploy.
+ */
+function jitter(word) {
+  let h = 7;
+  for (const ch of word) h = (h * 31 + ch.codePointAt(0)) % 9973;
+  return 0.86 + (h % 29) / 100;
+}
+
+// Preenchido por typeWords, usado no resumo no fim do build: e o numero que
+// precisa ficar de olho no orcamento de LCP se a foto um dia sair do hero
+// (ver docs/SEO.md, §7.2).
+let typedTotalMs = 0;
+
+function typeWords(tpl) {
+  // Ancorado em </span></h1>: o trecho e o ultimo filho do H1, entao isto casa
+  // exatamente o bloco certo mesmo que um dia haja outro <span> dentro dele.
+  const re = /<span class="typed">([\s\S]*?)<\/span><\/h1>/;
+  const found = tpl.match(re);
+  if (!found) throw new Error('site.html: <span class="typed"> nao encontrado no fim do <h1>');
+
+  // Separa tags de texto, para o "<em>" nao ser envolvido como se fosse palavra.
+  const parts = found[1].split(/(<[^>]+>)/);
+  const isTag = (p) => p.startsWith('<');
+
+  // 1a passada: quanto cada palavra custa para ser escrita (escrita + hesitacao).
+  const words = parts.flatMap((p) => (isTag(p) ? [] : p.match(/\S+/g) || []));
+  const cost = words.map((w) => {
+    const chars = [...w];
+    return Math.round((WORD_MS + chars.length * CHAR_MS) * jitter(w)) + (PAUSE[chars.at(-1)] || 0);
+  });
+
+  // 2a passada: cada palavra aparece quando as anteriores terminaram, e o cursor
+  // fica parado nela pelo tempo que a proxima leva para ser escrita — e por isso
+  // que ele hesita depois da virgula, sem nenhuma regra especial para virgula.
+  let i = 0;
+  const out = parts
+    .map((part) =>
+      isTag(part)
+        ? part
+        : part.replace(/\S+/g, (w) => {
+            const start = LEAD_MS + cost.slice(0, i).reduce((a, b) => a + b, 0);
+            // Na ultima palavra o cursor fica piscando para sempre, como o de um
+            // texto ainda aberto — entao ela nao leva --c (nao ha janela para
+            // fechar): `data-last` troca a animacao no CSS.
+            const last = i === words.length - 1;
+            i++;
+            return last
+              ? `<span style="--t:${start}ms" data-last>${w}</span>`
+              : `<span style="--t:${start}ms;--c:${cost[i - 1]}ms">${w}</span>`;
+          }),
+    )
+    .join('');
+
+  // O instante em que a ultima palavra COMECA a aparecer. O fade dela (0,22s,
+  // em motion.css) vem depois; o numero de orcamento e este, e ele fica no
+  // resumo do build de proposito — ver docs/SEO.md, §7.2.
+  typedTotalMs = LEAD_MS + cost.slice(0, -1).reduce((a, b) => a + b, 0);
+  return tpl.replace(re, () => `<span class="typed">${out}</span></h1>`);
+}
+
+// --- cartoes de formacao e atuacao ------------------------------------------
+const credentialCards = site.credentials
+  .map(
+    (cr) =>
+      `<li data-reveal><span class="credIcon" aria-hidden="true">${cr.icon}</span>` +
+      `<span class="credLabel">${esc(cr.label)}</span>` +
+      `<strong>${fillText(cr.value)}</strong><p>${fillText(cr.text)}</p></li>`,
+  )
+  .join('');
 
 // Horario legivel para a pagina, derivado do MESMO array que alimenta o
 // openingHoursSpecification — o Google compara os dois e penaliza divergencia.
@@ -121,6 +243,31 @@ const hoursText = humanHours(site.business.openingHours);
 const doctorIds = [];
 if (site.doctor.crm) doctorIds.push({ '@type': 'PropertyValue', name: 'CRM', value: site.doctor.crm });
 if (site.doctor.rqe) doctorIds.push({ '@type': 'PropertyValue', name: 'RQE', value: site.doctor.rqe });
+
+// `identifier` (acima) diz ao Google QUAL e o numero; `hasCredential` diz o que
+// ele significa e QUEM o reconhece. Num site de saude (YMYL) e esse segundo
+// sinal que sustenta a autoridade da entidade — e o que a secao #formacao
+// mostra na tela, para o dado estruturado e o visivel nunca divergirem.
+const doctorCredentials = [];
+if (site.doctor.crm) {
+  doctorCredentials.push({
+    '@type': 'EducationalOccupationalCredential',
+    name: site.doctor.crm,
+    credentialCategory: 'Registro profissional',
+    recognizedBy: {
+      '@type': 'GovernmentOrganization',
+      name: `Conselho Regional de Medicina do estado de ${addr.state} (CRM-${addr.stateCode})`,
+    },
+  });
+}
+if (site.doctor.rqe) {
+  doctorCredentials.push({
+    '@type': 'EducationalOccupationalCredential',
+    name: `${site.doctor.rqe} — Ginecologia e Obstetrícia`,
+    credentialCategory: 'Título de especialista',
+    recognizedBy: { '@type': 'GovernmentOrganization', name: 'Conselho Federal de Medicina (CFM)' },
+  });
+}
 
 const postalAddress = {
   '@type': 'PostalAddress',
@@ -208,6 +355,7 @@ const jsonLd = {
       sameAs: site.doctor.profiles,
       knowsAbout: site.services.map((s) => s.name),
       ...(doctorIds.length ? { identifier: doctorIds } : {}),
+      ...(doctorCredentials.length ? { hasCredential: doctorCredentials } : {}),
     },
     {
       '@type': 'ImageObject',
@@ -385,6 +533,47 @@ const consentBanner = gaId
     `})();</script>`
   : '';
 
+// --- movimento --------------------------------------------------------------
+// O CSS das animacoes esta em src/motion.css; o cabecalho daquele arquivo
+// explica as tres regras que governam o conjunto. Aqui ficam so as duas pecas
+// de JS, e a ordem entre elas e o ponto importante.
+//
+// `motionHead` roda no <head>, ANTES do primeiro paint, e nao faz nada alem de
+// marcar <html class="motion">. E essa classe que autoriza o CSS a esconder o
+// que sera revelado no scroll. A consequencia e deliberada: sem JS, com JS
+// quebrado, ou com "reduzir movimento" ligado no sistema, a classe nunca
+// aparece e a pagina renderiza inteira e visivel — que e o estado que o
+// Googlebot precisa ver. Se o estado inicial (opacity:0) morasse direto no CSS,
+// todo o conteudo abaixo da dobra chegaria ao rastreador invisivel.
+//
+// Precisa ser INLINE e no <head>: um arquivo externo, ou o mesmo script no fim
+// do <body>, aplicaria a classe depois do primeiro paint — o conteudo apareceria
+// e sumiria em seguida, um flash pior do que nao ter animacao nenhuma.
+const motionHead =
+  `<script>try{if(window.matchMedia&&!matchMedia('(prefers-reduced-motion:reduce)').matches` +
+  `&&'IntersectionObserver' in window)document.documentElement.classList.add('motion')}catch(e){}</script>`;
+
+// `motionBody` roda no fim do <body>, com o DOM pronto, e revela conforme o
+// scroll. Sai antes do aviso de cookies de proposito: se o consentimento
+// aparecer, ele nao depende deste script para nada.
+const motionBody =
+  `<script>(function(){if(!document.documentElement.classList.contains('motion'))return;` +
+  // rootMargin negativo embaixo: o elemento so conta como "visto" quando entra
+  // de verdade na tela. Sem isso ele termina a animacao ainda fora do campo de
+  // visao e a pessoa chega numa secao que ja aconteceu.
+  // unobserve depois de revelar: a animacao e de entrada, nao de ida e volta —
+  // reanimar no scroll para cima e o efeito que deixa uma pagina cansativa.
+  `var io=new IntersectionObserver(function(es){es.forEach(function(e){if(!e.isIntersecting)return;` +
+  `e.target.classList.add('isIn');io.unobserve(e.target)})},{rootMargin:'0px 0px -10% 0px'});` +
+  `document.querySelectorAll('[data-reveal]').forEach(function(el){io.observe(el)});` +
+  // Sombra do header. O sentinela .navTop (1px no topo do documento) troca a
+  // classe quando sai da tela — assim o site nao precisa de listener de scroll,
+  // que roda a cada frame e e a forma mais facil de tornar o scroll travado.
+  `var s=document.querySelector('.navTop'),nav=document.querySelector('.nav');` +
+  `if(s&&nav)new IntersectionObserver(function(e){` +
+  `nav.classList.toggle('isStuck',!e[0].isIntersecting)}).observe(s);` +
+  `})();</script>`;
+
 // --- politica de privacidade ------------------------------------------------
 // Um banner de consentimento sem politica acessivel nao cumpre a LGPD. Ela vive
 // em /privacidade, pagina propria, linkada do rodape (presente em todas as
@@ -401,12 +590,6 @@ const consentBanner = gaId
 // A pagina e montada em duas camadas, como recomenda o Guia de Cookies da
 // ANPD: resumo (lead + cartoes) no topo, documento completo abaixo.
 const pv = site.privacy;
-const pvVars = {
-  '{telefone}': esc(phone.display),
-  '{endereco}': esc(fullAddress),
-  '{site}': esc(siteUrl.replace(/^https?:\/\//, '')),
-};
-const pvText = (s) => Object.entries(pvVars).reduce((acc, [k, v]) => acc.split(k).join(v), esc(s));
 const pvDate = pv.updated.split('-').reverse().join('/');
 
 // Sem GA nao existe cookie de analise nenhum — documentar cookies que a pagina
@@ -432,7 +615,7 @@ const pvTable = (t) =>
     .map(
       (r) =>
         `<tr><th scope="row"><code>${esc(r[0])}</code></th>` +
-        r.slice(1).map((cell) => `<td>${pvText(cell)}</td>`).join('') +
+        r.slice(1).map((cell) => `<td>${fillText(cell)}</td>`).join('') +
         `</tr>`,
     )
     .join('') +
@@ -443,8 +626,8 @@ const pvArticles = pvSections
     (s) =>
       `<article class="privacyArticle" id="${s.id}">` +
       `<h2><span class="privacyNum" aria-hidden="true">${s.n}</span>${esc(s.title)}</h2>` +
-      s.paragraphs.map((p) => `<p>${pvText(p)}</p>`).join('') +
-      (s.list ? `<ul class="privacyList">${s.list.map((li) => `<li>${pvText(li)}</li>`).join('')}</ul>` : '') +
+      s.paragraphs.map((p) => `<p>${fillText(p)}</p>`).join('') +
+      (s.list ? `<ul class="privacyList">${s.list.map((li) => `<li>${fillText(li)}</li>`).join('')}</ul>` : '') +
       (s.table ? pvTable(s.table) : '') +
       (s.link
         ? `<a class="privacyLink" href="${esc(s.link.href)}" target="_blank" rel="noopener">` +
@@ -462,7 +645,7 @@ const pvIndex =
 
 const pvContact =
   `<aside class="privacyContact"><h2>${esc(pv.contact.title)}</h2>` +
-  `<p>${pvText(pv.contact.text)}</p>` +
+  `<p>${fillText(pv.contact.text)}</p>` +
   // Revogar precisa ser tao facil quanto consentir (LGPD, art. 8o, §5o) — por
   // isso o botao fica aqui, no fim da leitura, e nao escondido no navegador.
   (gaId
@@ -478,15 +661,18 @@ const privacyMain =
   `<a href="/">Início</a><span aria-hidden="true">/</span>${esc(pv.title)}</nav>` +
   `<p class="eyebrow">${esc(pv.eyebrow)}</p>` +
   `<h1>${esc(pv.title)}</h1>` +
-  `<p class="privacyLead">${pvText(pv.summary)}</p>` +
+  `<p class="privacyLead">${fillText(pv.summary)}</p>` +
   `<p class="privacyMeta"><span>Última atualização: ${pvDate}</span><span>${esc(pv.legalNote)}</span></p>` +
   `</header>` +
-  `<ul class="privacyHighlights">` +
+  // Os cartoes de resumo sao o unico bloco animado da politica: o corpo do
+  // documento entra estatico de proposito — animar paragrafo de texto juridico
+  // atrasa a leitura de quem foi ali buscar uma informacao especifica.
+  `<ul class="privacyHighlights stagger">` +
   pv.highlights
     .map(
       (h) =>
-        `<li><span class="privacyIcon" aria-hidden="true">${h.icon}</span>` +
-        `<strong>${esc(h.title)}</strong><span>${pvText(h.text)}</span></li>`,
+        `<li data-reveal><span class="privacyIcon" aria-hidden="true">${h.icon}</span>` +
+        `<strong>${esc(h.title)}</strong><span>${fillText(h.text)}</span></li>`,
     )
     .join('') +
   `</ul>` +
@@ -528,11 +714,51 @@ const privacyJsonLd = {
 const html = await readFile('site.html', 'utf8');
 
 // Dois bundles em vez de um: a home nao carrega o CSS da politica, e a politica
-// nao carrega o das fotos. styles.css entra nas duas porque e la que vivem o
-// header, o rodape e a tipografia.
-const readCss = async (files) => (await Promise.all(files.map((f) => readFile(f, 'utf8')))).join('\n');
-const css = await readCss(['src/styles.css', 'src/photos.css', 'src/env-ui.css']);
-const privacyCss = await readCss(['src/styles.css', 'src/env-ui.css', 'src/privacy.css']);
+// nao carrega o das fotos nem o da secao de formacao. styles.css entra nas duas
+// porque e la que vivem o header, o rodape e a tipografia; motion.css tambem,
+// porque metade das micro-interacoes esta no header e no rodape.
+//
+// motion.css e SEMPRE o ultimo: ele sobrescreve declaracoes de styles.css (o
+// "+/-" do FAQ, a transicao dos cartoes) e depende de vencer no cascade.
+// Comentario de CSS e documentacao para quem edita o arquivo, nao informacao
+// para o navegador — e todos eles viajavam dentro do <style> de cada pagina. Os
+// arquivos deste projeto sao comentados de proposito e com fartura, entao isso
+// ja passava de 4 KB por pagina, no bloco que bloqueia a renderizacao. Sai aqui:
+// a fonte continua comentada, o HTML fica enxuto e o FCP agradece.
+//
+// O comentario e trocado por um ESPACO, nao por vazio: em CSS o comentario e um
+// separador de tokens valido, e concatenar os dois lados poderia grudar um `}`
+// num seletor.
+function stripCssComments(css, file) {
+  const out = css
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/[ \t]*\n[ \t\n]*/g, '\n')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim();
+
+  // Comentario de CSS mal fechado e o erro mais silencioso que existe neste
+  // projeto: o navegador engole a proxima regra inteira e o bloco simplesmente
+  // nao aplica — sem erro no console, sem nada. Ja custou uma secao publicada
+  // sem padding e sem fundo. Se depois de remover todos os pares /* */ ainda
+  // sobrou um delimitador solto, o arquivo esta quebrado: falhar aqui e barato.
+  const loose = out.match(/\/\*|\*\//);
+  if (loose) {
+    const at = out.slice(Math.max(0, out.indexOf(loose[0]) - 60), out.indexOf(loose[0]) + 20).replace(/\n/g, ' ');
+    throw new Error(`${file}: comentario de CSS mal fechado ("${loose[0]}" solto) perto de: ...${at}`);
+  }
+  return out;
+}
+
+const readCss = async (files) =>
+  (await Promise.all(files.map(async (f) => stripCssComments(await readFile(f, 'utf8'), f)))).join('\n');
+const css = await readCss([
+  'src/styles.css',
+  'src/photos.css',
+  'src/credentials.css',
+  'src/env-ui.css',
+  'src/motion.css',
+]);
+const privacyCss = await readCss(['src/styles.css', 'src/env-ui.css', 'src/privacy.css', 'src/motion.css']);
 
 /**
  * Header, rodape e o script do menu sao os mesmos nas duas paginas. Em vez de
@@ -561,6 +787,8 @@ const crmLine = site.doctor.crm
 function fill(tpl) {
   let out = tpl
     .replaceAll('__ANALYTICS_HEAD__', analyticsHead)
+    .replaceAll('__MOTION_HEAD__', motionHead)
+    .replaceAll('__MOTION_BODY__', motionBody)
     .replaceAll('__ENV_BADGE__', envBadge)
     .replaceAll('__BODY_ATTR__', bodyAttr)
     .replaceAll('__CONSENT_BANNER__', consentBanner)
@@ -576,8 +804,12 @@ function fill(tpl) {
     .replaceAll('__ADDRESS_CITY__', esc(`${addr.district}, ${addr.city}-${addr.stateCode}`))
     .replaceAll('__MAP_URL__', esc(mapUrl))
     .replaceAll('__AREA_SERVED__', site.business.areaServed.map((c) => `<li>${esc(c)}</li>`).join(''))
-    // Os marcadores de shell nao precisam viajar ate o navegador.
-    .replace(/<!--\/?#shell:[a-z]+-->/g, '');
+    // Comentario de HTML tambem nao e informacao para o navegador. Este replace
+    // cobre os marcadores <!--#shell:nome--> (que ja foram consumidos pelo
+    // shell(), sobre o `html` cru, antes de chegar aqui) e, de quebra, libera o
+    // site.html para ser comentado como todo o resto do projeto — sem os
+    // comentarios pesarem no HTML de cada visita.
+    .replace(/<!--[\s\S]*?-->/g, '');
 
   for (const [name, img] of Object.entries(images)) {
     const token = `__${name.toUpperCase().replaceAll('-', '_')}__`;
@@ -587,10 +819,11 @@ function fill(tpl) {
 }
 
 const page = fill(
-  html
+  typeWords(html)
     .replace('/*__STYLES__*/', css)
     .replaceAll('__HEAD_SEO__', headSeo)
     .replaceAll('__SERVICE_CARDS__', serviceCards)
+    .replaceAll('__CREDENTIAL_ITEMS__', credentialCards)
     .replaceAll('__FAQ_LIST__', faqList),
 );
 
@@ -605,13 +838,13 @@ const privacyPage = fill(
       canonical: `${siteUrl}${pv.path}`,
       jsonLd: privacyJsonLd,
     }) +
-    `<style>${privacyCss}</style>__ANALYTICS_HEAD__</head><body__BODY_ATTR__>__ENV_BADGE__` +
+    `<style>${privacyCss}</style>__ANALYTICS_HEAD____MOTION_HEAD__</head><body__BODY_ATTR__>__ENV_BADGE__` +
     `<a class="skip" href="#politica">Ir para o conteúdo</a>` +
     toHomeAnchors(shell('nav')) +
     privacyMain +
     toHomeAnchors(shell('footer')) +
     shell('menu') +
-    `__CONSENT_BANNER__</body></html>`,
+    `__MOTION_BODY____CONSENT_BANNER__</body></html>`,
 );
 
 for (const [label, out] of [['index.html', page], [`${pv.path}/index.html`, privacyPage]]) {
@@ -735,6 +968,9 @@ console.log(
   `dist${pv.path}/    ${kb(Buffer.byteLength(privacyPage))} (gz ${kb((await stat(`dist${pv.path}/index.html.gz`)).size)})`,
 );
 console.log(`dist/assets/       ${imageNames.length} imagens`);
+// Fica no resumo porque e um numero de orcamento, nao curiosidade: e quando a
+// manchete termina de ser escrita. Ver docs/SEO.md, §7.2.
+console.log(`manchete           ${(typedTotalMs / 1000).toFixed(2)}s de escrita`);
 console.log(`site url           ${siteUrl}`);
 console.log(`ambiente           ${siteEnv}${isProd ? ' (indexavel)' : ' (noindex + robots.txt Disallow)'}`);
 console.log(`analytics          ${gaId ? `${gaId}${isProd ? '' : ' + debug_mode'}` : 'desligado (GA_MEASUREMENT_ID vazio)'}`);

@@ -157,6 +157,73 @@ export const site = {
     },
   ],
 
+  // --- Formacao e atuacao (secao #formacao) ----------------------------------
+  // Vira os cartoes da secao "Formacao e atuacao". Existe por dois motivos:
+  //
+  //   1) Paciente: e o unico bloco da pagina que responde "por que confiar
+  //      nesta medica?" com dado CONFERIVEL, e nao com texto de marketing.
+  //   2) Google: saude e YMYL (Your Money or Your Life), a categoria em que o
+  //      algoritmo pesa mais credencial verificavel (E-E-A-T). O CRM e o RQE
+  //      tambem viram `hasCredential` no no Person do JSON-LD, o que reforca a
+  //      entidade "Dra. Claudia Maciel" no grafo do Google.
+  //
+  // ATENCAO — NAO invente item aqui. Cada linha precisa ser conferivel: a
+  // Res. CFM 1.974/2011 exige veracidade na publicidade medica, e credencial
+  // inflada num site de saude e o tipo de coisa que derruba o site inteiro na
+  // busca. Os itens que faltam estao comentados no fim da lista.
+  //
+  // NAO acrescente depoimento de paciente nem imagem de "antes e depois":
+  // as normas do CFM sobre publicidade medica proibem os dois.
+  //
+  // {crm} e {rqe} sao substituidos no build pelos valores de `doctor`, para o
+  // cartao nunca divergir do rodape e do JSON-LD.
+  credentials: [
+    {
+      icon: '◈',
+      label: 'Registro profissional',
+      value: '{crm}',
+      text: 'Registro ativo no Conselho Regional de Medicina de Mato Grosso do Sul, exigido para o exercício da medicina no estado.',
+    },
+    {
+      icon: '✦',
+      label: 'Título de especialista',
+      value: '{rqe}',
+      text: 'Registro de Qualificação de Especialista: é o número que comprova, junto ao CFM, o título de especialista em Ginecologia e Obstetrícia.',
+    },
+    {
+      icon: '♡',
+      label: 'Áreas de atuação',
+      value: 'Ginecologia e Obstetrícia',
+      text: 'As duas especialidades no mesmo consultório: a saúde ginecológica em todas as fases da vida e o acompanhamento completo da gestação.',
+    },
+    {
+      icon: '⌂',
+      label: 'Onde atende',
+      value: 'Centro de Bonito-MS',
+      text: 'Atendimento presencial em {endereco}, com pacientes de Bonito e de mais oito cidades da região.',
+    },
+    // [PREENCHER] Confirmar com a Dra. Claudia e descomentar (a secao aceita 4
+    // ou 6 itens sem ajuste de layout — com 5 sobra um cartao solto na grade):
+    // {
+    //   icon: '⌾',
+    //   label: 'Graduação em Medicina',
+    //   value: 'Universidade [PREENCHER]',
+    //   text: 'Formada em Medicina pela [PREENCHER], em [ano].',
+    // },
+    // {
+    //   icon: '⌘',
+    //   label: 'Residência médica',
+    //   value: 'Ginecologia e Obstetrícia',
+    //   text: 'Residência médica concluída no [PREENCHER], programa reconhecido pelo MEC.',
+    // },
+    // {
+    //   icon: '❖',
+    //   label: 'Sociedades',
+    //   value: 'FEBRASGO',
+    //   text: 'Associada à Federação Brasileira das Associações de Ginecologia e Obstetrícia.',
+    // },
+  ],
+
   // Perguntas frequentes: viram <details> na pagina E FAQPage no JSON-LD.
   // O Google exige que a resposta do schema esteja visivel na pagina — por isso
   // os dois sao gerados daqui.
