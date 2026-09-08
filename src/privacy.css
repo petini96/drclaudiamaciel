@@ -1,0 +1,85 @@
+/* Estilos exclusivos de /privacidade. Ficam fora do bundle da home: a pagina
+   inicial nao carrega nenhuma destas regras.
+
+   A pagina e organizada em duas camadas, como recomenda o Guia Orientativo de
+   Cookies da ANPD: primeiro o resumo (lead + 4 cartoes de destaque), depois o
+   documento completo. Quem so quer saber "voces pegam meus dados?" resolve nos
+   primeiros 10 segundos; quem precisa do texto integral rola. */
+
+.privacyPage{padding:64px clamp(24px,8vw,130px) 84px;background:linear-gradient(180deg,var(--cream) 0,#f6ece9 100%)}
+.privacyHero{max-width:780px}
+.privacyBreadcrumb{margin:0 0 26px;font-size:12px;color:var(--muted)}
+.privacyBreadcrumb a{color:var(--wine);font-weight:600;text-decoration:none;border-bottom:1px solid var(--rose);padding-bottom:2px}
+.privacyBreadcrumb span{margin:0 8px;color:var(--rose)}
+.privacyPage h1{font:500 clamp(34px,4vw,54px)/1.06 'Playfair Display',serif;margin:0;color:var(--ink)}
+.privacyLead{margin:20px 0 0;color:var(--muted);font-size:15px;line-height:1.8}
+/* Data + base legal como duas "etiquetas": informam sem competir com o lead. */
+.privacyMeta{display:flex;flex-wrap:wrap;gap:8px;margin:22px 0 0}
+.privacyMeta span{font:600 11px/1 'DM Sans',sans-serif;letter-spacing:.6px;color:var(--wine);background:rgba(255,255,255,.75);border:1px solid #ecdcdd;border-radius:999px;padding:7px 13px}
+
+/* Camada 1 — o resumo que muita gente le no lugar do documento inteiro.
+   Cada cartao tem de ser verdadeiro sozinho (ver src/site-data.js). */
+.privacyHighlights{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:40px 0 0;padding:0;list-style:none}
+.privacyHighlights li{display:flex;flex-direction:column;gap:9px;background:#fff;border:1px solid #f0e3e4;border-radius:14px;padding:22px 20px 20px}
+.privacyIcon{display:grid;place-items:center;width:36px;height:36px;border-radius:50%;background:var(--blush);color:var(--wine);font-size:16px;line-height:1}
+.privacyHighlights strong{font:600 14px 'DM Sans',sans-serif;color:var(--ink)}
+.privacyHighlights li>span:last-child{font-size:12.5px;line-height:1.6;color:var(--muted)}
+
+/* Camada 2 — o documento. */
+.privacyPaper{display:grid;grid-template-columns:212px 1fr;gap:clamp(28px,4vw,54px);margin-top:34px;background:#fff;border:1px solid #f0e4e5;border-radius:18px;padding:clamp(26px,3.4vw,46px);box-shadow:0 22px 55px rgba(74,38,51,.07)}
+
+/* Indice: 15 secoes sem sumario viram um rolo. Sticky no desktop para a leitora
+   nunca perder a referencia de onde esta dentro do documento. */
+.privacyIndex{position:sticky;top:112px;align-self:start;border-right:1px solid #f3e9ea;padding-right:22px}
+.privacyIndexTitle{margin:0 0 12px;font:700 10px 'DM Sans',sans-serif;letter-spacing:1.8px;text-transform:uppercase;color:var(--wine)}
+.privacyIndex ol{margin:0;padding:0;list-style:none;counter-reset:pv}
+.privacyIndex li{counter-increment:pv}
+.privacyIndex a{display:block;padding:6px 0;color:var(--muted);text-decoration:none;font-size:12.5px;line-height:1.45;border-bottom:1px solid transparent}
+.privacyIndex a:before{content:counter(pv,decimal-leading-zero);margin-right:8px;color:var(--rose);font-weight:700;font-size:10px}
+.privacyIndex a:hover{color:var(--wine)}
+
+.privacyBody{min-width:0}
+.privacyArticle{scroll-margin-top:112px}
+.privacyArticle+.privacyArticle{margin-top:26px;padding-top:26px;border-top:1px solid #f5edee}
+.privacyArticle h2{display:flex;align-items:baseline;gap:10px;margin:0 0 10px;font:600 16px 'DM Sans',sans-serif;color:var(--ink)}
+.privacyNum{font:700 10px 'DM Sans',sans-serif;letter-spacing:1px;color:var(--rose)}
+.privacyArticle p{margin:0 0 10px;color:var(--muted);font-size:13.5px;line-height:1.8}
+.privacyArticle p:last-child{margin-bottom:0}
+.privacyList{margin:4px 0 12px;padding:0;list-style:none}
+.privacyList li{position:relative;padding-left:18px;margin-bottom:7px;color:var(--muted);font-size:13.5px;line-height:1.7}
+.privacyList li:before{content:'';position:absolute;left:0;top:9px;width:6px;height:6px;border-radius:50%;background:var(--rose)}
+.privacyLink{display:inline-block;margin-top:6px;color:var(--wine);font-weight:700;font-size:13px;text-decoration:none;border-bottom:1px solid var(--rose);padding-bottom:3px}
+
+/* Tabela de cookies: a ANPD recomenda declarar nome, finalidade, origem e
+   validade. Rola no proprio container para nunca esticar a pagina no celular. */
+.privacyTableWrap{overflow-x:auto;margin:14px 0 4px;border:1px solid #f0e4e5;border-radius:12px}
+.privacyTable{width:100%;min-width:520px;border-collapse:collapse;font-size:12.5px}
+.privacyTable th,.privacyTable td{text-align:left;padding:11px 14px;border-bottom:1px solid #f5edee;vertical-align:top;color:var(--muted);font-weight:400;line-height:1.55}
+.privacyTable thead th{background:var(--blush);color:var(--wine);font:700 10px 'DM Sans',sans-serif;letter-spacing:1.2px;text-transform:uppercase}
+.privacyTable tbody tr:last-child th,.privacyTable tbody tr:last-child td{border-bottom:0}
+.privacyTable tbody th{white-space:nowrap}
+.privacyTable code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:var(--wine);background:#faf3f3;border-radius:5px;padding:2px 6px}
+
+/* Cartao de encerramento: contato do controlador + revogacao do consentimento
+   (LGPD art. 8o, §5o — revogar tem de ser tao facil quanto consentir). */
+.privacyContact{margin-top:30px;background:var(--blush);border-radius:14px;padding:24px 26px}
+.privacyContact h2{margin:0 0 8px;font:600 17px 'Playfair Display',serif;color:var(--wine)}
+.privacyContact p{margin:0;color:#6b585c;font-size:13.5px;line-height:1.75}
+.consentReset{display:inline-flex;align-items:center;gap:9px;margin-top:16px;background:var(--wine);border:0;border-radius:999px;padding:13px 22px;color:#fff;font:700 13px 'DM Sans',sans-serif;cursor:pointer;transition:.25s}
+.consentReset:hover{background:var(--wine2)}
+
+@media(max-width:1000px){
+  .privacyHighlights{grid-template-columns:repeat(2,1fr)}
+  /* Abaixo do desktop o indice vira uma faixa de "chips" acima do texto: manter
+     a coluna sticky aqui espremeria os dois lados sem ajudar ninguem. */
+  .privacyPaper{grid-template-columns:1fr;gap:26px}
+  .privacyIndex{position:static;border-right:0;border-bottom:1px solid #f3e9ea;padding:0 0 18px}
+  .privacyIndex ol{display:flex;flex-wrap:wrap;gap:7px}
+  .privacyIndex a{padding:7px 12px;border:1px solid #f0e4e5;border-radius:999px;font-size:12px}
+}
+@media(max-width:560px){
+  .privacyPage{padding:44px 24px 56px}
+  .privacyHighlights{grid-template-columns:1fr}
+  .privacyContact{padding:20px}
+  .consentReset{width:100%;justify-content:center}
+}

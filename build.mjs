@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile, stat, rm, copyFile } from 'node:fs/promises';
+﻿import { mkdir, readFile, writeFile, stat, rm, copyFile } from 'node:fs/promises';
 import { gzipSync } from 'node:zlib';
 import { site } from './src/site-data.js';
 
@@ -253,60 +253,80 @@ const jsonLd = {
 const fontsHref =
   'https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@500;600&display=swap';
 
-const headSeo = [
-  `<title>${esc(site.seo.title)}</title>`,
-  `<meta name="description" content="${esc(site.seo.description)}">`,
-  `<link rel="canonical" href="${siteUrl}/">`,
-  // Fora de producao a diretiva e invertida. Esta e a 2a das 4 camadas que
-  // impedem a indexacao de homologacao (as outras: Basic Auth no Traefik,
-  // X-Robots-Tag no nginx e o robots.txt logo abaixo).
-  isProd
-    ? `<meta name="robots" content="index,follow,max-snippet:-1,max-image-preview:large,max-video-preview:-1">`
-    : `<meta name="robots" content="noindex,nofollow,noarchive,nosnippet">`,
-  isProd
-    ? `<meta name="googlebot" content="index,follow,max-snippet:-1,max-image-preview:large">`
-    : `<meta name="googlebot" content="noindex,nofollow,noarchive,nosnippet">`,
-  `<meta name="keywords" content="${esc(site.seo.keywords.join(', '))}">`,
-  `<meta name="author" content="${esc(site.doctor.fullName)}">`,
-  `<meta name="theme-color" content="${site.themeColor}">`,
-  `<meta name="color-scheme" content="light">`,
-  `<meta name="format-detection" content="telephone=no">`,
-  // Sinais de geolocalizacao para busca local.
-  `<meta name="geo.region" content="${addr.country}-${addr.stateCode}">`,
-  `<meta name="geo.placename" content="${esc(addr.city)}">`,
-  `<meta name="geo.position" content="${geo.lat};${geo.lng}">`,
-  `<meta name="ICBM" content="${geo.lat}, ${geo.lng}">`,
-  // Open Graph.
-  `<meta property="og:type" content="website">`,
-  `<meta property="og:site_name" content="${esc(site.business.name)}">`,
-  `<meta property="og:locale" content="pt_BR">`,
-  `<meta property="og:url" content="${siteUrl}/">`,
-  `<meta property="og:title" content="${esc(site.seo.title)}">`,
-  `<meta property="og:description" content="${esc(site.seo.description)}">`,
-  `<meta property="og:image" content="${hero.url}">`,
-  `<meta property="og:image:type" content="image/webp">`,
-  `<meta property="og:image:width" content="${hero.w}">`,
-  `<meta property="og:image:height" content="${hero.h}">`,
-  `<meta property="og:image:alt" content="${esc(site.doctor.fullName)}, ${esc(site.doctor.jobTitle.toLowerCase())} em ${esc(addr.city)}-${addr.stateCode}">`,
-  // Twitter/X.
-  `<meta name="twitter:card" content="summary_large_image">`,
-  `<meta name="twitter:title" content="${esc(site.seo.title)}">`,
-  `<meta name="twitter:description" content="${esc(site.seo.description)}">`,
-  `<meta name="twitter:image" content="${hero.url}">`,
-  // Icones + manifest (o Google exige favicon para exibir o icone na SERP mobile).
-  `<link rel="icon" href="/favicon.svg" type="image/svg+xml">`,
-  `<link rel="mask-icon" href="/favicon.svg" color="${site.themeColor}">`,
-  `<link rel="manifest" href="/site.webmanifest">`,
-  // LCP: o hero comeca a baixar junto com o HTML.
-  `<link rel="preload" as="image" href="${hero.path}" fetchpriority="high">`,
-  // Fontes sem bloquear a renderizacao.
-  `<link rel="preconnect" href="https://fonts.googleapis.com">`,
-  `<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>`,
-  `<link rel="preload" as="style" href="${fontsHref}">`,
-  `<link rel="stylesheet" href="${fontsHref}" media="print" onload="this.media='all'">`,
-  `<noscript><link rel="stylesheet" href="${fontsHref}"></noscript>`,
-  `<script type="application/ld+json">${JSON.stringify(jsonLd).replace(/</g, '\\u003c')}</script>`,
-].join('');
+/**
+ * Monta o <head> de uma pagina. Sai como funcao (e nao como constante) porque o
+ * site tem duas rotas — a home e /privacidade — e as duas precisam do mesmo
+ * cabecalho tecnico, mas com title, canonical e JSON-LD proprios. Duplicar isso
+ * seria a maneira mais facil de a politica sair com o canonical da home, que
+ * apagaria a pagina do indice do Google.
+ *
+ * `local` = so a home publica sinais de geolocalizacao, keywords e o preload do
+ * hero; numa pagina juridica eles nao ajudam e o preload atrasaria a LCP dela.
+ */
+function buildHead({ title, description, canonical, jsonLd, local = false }) {
+  return [
+    `<title>${esc(title)}</title>`,
+    `<meta name="description" content="${esc(description)}">`,
+    `<link rel="canonical" href="${canonical}">`,
+    // Fora de producao a diretiva e invertida. Esta e a 2a das 4 camadas que
+    // impedem a indexacao de homologacao (as outras: Basic Auth no Traefik,
+    // X-Robots-Tag no nginx e o robots.txt logo abaixo).
+    isProd
+      ? `<meta name="robots" content="index,follow,max-snippet:-1,max-image-preview:large,max-video-preview:-1">`
+      : `<meta name="robots" content="noindex,nofollow,noarchive,nosnippet">`,
+    isProd
+      ? `<meta name="googlebot" content="index,follow,max-snippet:-1,max-image-preview:large">`
+      : `<meta name="googlebot" content="noindex,nofollow,noarchive,nosnippet">`,
+    local ? `<meta name="keywords" content="${esc(site.seo.keywords.join(', '))}">` : '',
+    `<meta name="author" content="${esc(site.doctor.fullName)}">`,
+    `<meta name="theme-color" content="${site.themeColor}">`,
+    `<meta name="color-scheme" content="light">`,
+    `<meta name="format-detection" content="telephone=no">`,
+    // Sinais de geolocalizacao para busca local.
+    local ? `<meta name="geo.region" content="${addr.country}-${addr.stateCode}">` : '',
+    local ? `<meta name="geo.placename" content="${esc(addr.city)}">` : '',
+    local ? `<meta name="geo.position" content="${geo.lat};${geo.lng}">` : '',
+    local ? `<meta name="ICBM" content="${geo.lat}, ${geo.lng}">` : '',
+    // Open Graph.
+    `<meta property="og:type" content="website">`,
+    `<meta property="og:site_name" content="${esc(site.business.name)}">`,
+    `<meta property="og:locale" content="pt_BR">`,
+    `<meta property="og:url" content="${canonical}">`,
+    `<meta property="og:title" content="${esc(title)}">`,
+    `<meta property="og:description" content="${esc(description)}">`,
+    `<meta property="og:image" content="${hero.url}">`,
+    `<meta property="og:image:type" content="image/webp">`,
+    `<meta property="og:image:width" content="${hero.w}">`,
+    `<meta property="og:image:height" content="${hero.h}">`,
+    `<meta property="og:image:alt" content="${esc(site.doctor.fullName)}, ${esc(site.doctor.jobTitle.toLowerCase())} em ${esc(addr.city)}-${addr.stateCode}">`,
+    // Twitter/X.
+    `<meta name="twitter:card" content="summary_large_image">`,
+    `<meta name="twitter:title" content="${esc(title)}">`,
+    `<meta name="twitter:description" content="${esc(description)}">`,
+    `<meta name="twitter:image" content="${hero.url}">`,
+    // Icones + manifest (o Google exige favicon para exibir o icone na SERP mobile).
+    `<link rel="icon" href="/favicon.svg" type="image/svg+xml">`,
+    `<link rel="mask-icon" href="/favicon.svg" color="${site.themeColor}">`,
+    `<link rel="manifest" href="/site.webmanifest">`,
+    // LCP: o hero comeca a baixar junto com o HTML.
+    local ? `<link rel="preload" as="image" href="${hero.path}" fetchpriority="high">` : '',
+    // Fontes sem bloquear a renderizacao.
+    `<link rel="preconnect" href="https://fonts.googleapis.com">`,
+    `<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>`,
+    `<link rel="preload" as="style" href="${fontsHref}">`,
+    `<link rel="stylesheet" href="${fontsHref}" media="print" onload="this.media='all'">`,
+    `<noscript><link rel="stylesheet" href="${fontsHref}"></noscript>`,
+    `<script type="application/ld+json">${JSON.stringify(jsonLd).replace(/</g, '\\u003c')}</script>`,
+  ].join('');
+}
+
+const headSeo = buildHead({
+  title: site.seo.title,
+  description: site.seo.description,
+  canonical: `${siteUrl}/`,
+  jsonLd,
+  local: true,
+});
 
 // --- selo de ambiente -------------------------------------------------------
 // Existe para que ninguem aprove/reporte bug olhando para o ambiente errado.
@@ -335,7 +355,7 @@ const c = site.analytics.consent;
 
 const consentBanner = gaId
   ? `<aside class="consent" id="consent" role="region" aria-label="Aviso de cookies" hidden>` +
-    `<p>${esc(c.text)} <a href="#privacidade">${esc(c.more)}</a>.</p>` +
+    `<p>${esc(c.text)} <a href="${site.privacy.path}">${esc(c.more)}</a>.</p>` +
     `<div class="consentActions">` +
     `<button type="button" data-consent="denied">${esc(c.reject)}</button>` +
     `<button type="button" data-consent="granted">${esc(c.accept)}</button>` +
@@ -366,32 +386,169 @@ const consentBanner = gaId
   : '';
 
 // --- politica de privacidade ------------------------------------------------
-// Um banner de consentimento sem politica acessivel nao cumpre a LGPD. Fica
-// como secao desta mesma pagina (o site e single page: uma rota /privacidade
-// exigiria mexer em nginx, canonical, sitemap e breadcrumb).
+// Um banner de consentimento sem politica acessivel nao cumpre a LGPD. Ela vive
+// em /privacidade, pagina propria, linkada do rodape (presente em todas as
+// paginas) e de dentro do proprio aviso de cookies, ANTES do aceite. E o que os
+// arts. 6o, VI e 9o pedem: acesso facilitado e ostensivo — nada na lei exige o
+// texto embutido na home.
+//
+// Por que nao ficou na home: o documento tem ~1.265 palavras contra ~1.017 de
+// conteudo editorial. Embutido, ele era 55% do texto da pagina que disputa
+// "ginecologista em Bonito-MS" — diluicao de relevancia num site de saude, onde
+// o Google e mais rigoroso. Uma URL estavel tambem e exigida por Meta Ads e
+// Google Ads para aprovar campanha.
+//
+// A pagina e montada em duas camadas, como recomenda o Guia de Cookies da
+// ANPD: resumo (lead + cartoes) no topo, documento completo abaixo.
 const pv = site.privacy;
-const pvVars = { '{telefone}': esc(phone.display), '{endereco}': esc(fullAddress) };
+const pvVars = {
+  '{telefone}': esc(phone.display),
+  '{endereco}': esc(fullAddress),
+  '{site}': esc(siteUrl.replace(/^https?:\/\//, '')),
+};
 const pvText = (s) => Object.entries(pvVars).reduce((acc, [k, v]) => acc.split(k).join(v), esc(s));
 const pvDate = pv.updated.split('-').reverse().join('/');
 
-const privacySection =
-  `<details class="privacy" id="privacidade"><summary><span>${esc(pv.title)}</span>` +
-  `<b aria-hidden="true"></b></summary>` +
-  `<p class="privacyLead">${pvText(pv.summary)}</p>` +
-  `<p class="privacyUpdated">Última atualização: ${pvDate}</p>` +
-  `<div class="privacyBody">` +
-  pv.sections
-    .map((s) => `<h3>${esc(s.title)}</h3>${s.paragraphs.map((p) => `<p>${pvText(p)}</p>`).join('')}`)
+// Sem GA nao existe cookie de analise nenhum — documentar cookies que a pagina
+// nao grava seria informacao falsa, entao a secao marcada some do HTML.
+const pvSections = pv.sections
+  .filter((s) => gaId || !s.requiresAnalytics)
+  .map((s, i) => ({
+    ...s,
+    n: String(i + 1).padStart(2, '0'),
+    id: `pv-${s.title
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')}`,
+  }));
+
+const pvTable = (t) =>
+  `<div class="privacyTableWrap"><table class="privacyTable"><thead><tr>` +
+  t.head.map((h) => `<th scope="col">${esc(h)}</th>`).join('') +
+  `</tr></thead><tbody>` +
+  t.rows
+    .map(
+      (r) =>
+        `<tr><th scope="row"><code>${esc(r[0])}</code></th>` +
+        r.slice(1).map((cell) => `<td>${pvText(cell)}</td>`).join('') +
+        `</tr>`,
+    )
     .join('') +
+  `</tbody></table></div>`;
+
+const pvArticles = pvSections
+  .map(
+    (s) =>
+      `<article class="privacyArticle" id="${s.id}">` +
+      `<h2><span class="privacyNum" aria-hidden="true">${s.n}</span>${esc(s.title)}</h2>` +
+      s.paragraphs.map((p) => `<p>${pvText(p)}</p>`).join('') +
+      (s.list ? `<ul class="privacyList">${s.list.map((li) => `<li>${pvText(li)}</li>`).join('')}</ul>` : '') +
+      (s.table ? pvTable(s.table) : '') +
+      (s.link
+        ? `<a class="privacyLink" href="${esc(s.link.href)}" target="_blank" rel="noopener">` +
+          `${esc(s.link.label)} <span aria-hidden="true">&#8599;</span></a>`
+        : '') +
+      `</article>`,
+  )
+  .join('');
+
+const pvIndex =
+  `<nav class="privacyIndex" aria-label="Índice da política de privacidade">` +
+  `<p class="privacyIndexTitle">${esc(pv.indexTitle)}</p><ol>` +
+  pvSections.map((s) => `<li><a href="#${s.id}">${esc(s.title)}</a></li>`).join('') +
+  `</ol></nav>`;
+
+const pvContact =
+  `<aside class="privacyContact"><h2>${esc(pv.contact.title)}</h2>` +
+  `<p>${pvText(pv.contact.text)}</p>` +
+  // Revogar precisa ser tao facil quanto consentir (LGPD, art. 8o, §5o) — por
+  // isso o botao fica aqui, no fim da leitura, e nao escondido no navegador.
   (gaId
-    ? `<p><button type="button" id="consentReset" class="consentReset">Alterar minha preferência de cookies</button></p>`
+    ? `<button type="button" id="consentReset" class="consentReset">` +
+      `<span aria-hidden="true">↺</span> ${esc(pv.contact.cookiesLabel)}</button>`
     : '') +
-  `</div></details>`;
+  `</aside>`;
+
+const privacyMain =
+  `<main class="privacyPage" id="politica" tabindex="-1">` +
+  `<header class="privacyHero">` +
+  `<nav class="privacyBreadcrumb" aria-label="Trilha de navegação">` +
+  `<a href="/">Início</a><span aria-hidden="true">/</span>${esc(pv.title)}</nav>` +
+  `<p class="eyebrow">${esc(pv.eyebrow)}</p>` +
+  `<h1>${esc(pv.title)}</h1>` +
+  `<p class="privacyLead">${pvText(pv.summary)}</p>` +
+  `<p class="privacyMeta"><span>Última atualização: ${pvDate}</span><span>${esc(pv.legalNote)}</span></p>` +
+  `</header>` +
+  `<ul class="privacyHighlights">` +
+  pv.highlights
+    .map(
+      (h) =>
+        `<li><span class="privacyIcon" aria-hidden="true">${h.icon}</span>` +
+        `<strong>${esc(h.title)}</strong><span>${pvText(h.text)}</span></li>`,
+    )
+    .join('') +
+  `</ul>` +
+  `<div class="privacyPaper">${pvIndex}` +
+  `<div class="privacyBody">${pvArticles}${pvContact}</div>` +
+  `</div></main>`;
+
+// JSON-LD proprio da pagina: sem ele o Google trata /privacidade como orfa do
+// grafo do site. O breadcrumb tambem e o que rende a trilha "Início > Política
+// de Privacidade" no resultado de busca, em vez da URL crua.
+const privacyJsonLd = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'WebPage',
+      '@id': `${siteUrl}${pv.path}#webpage`,
+      url: `${siteUrl}${pv.path}`,
+      name: pv.metaTitle,
+      description: pv.metaDescription,
+      inLanguage: site.locale,
+      isPartOf: { '@id': `${siteUrl}/#website` },
+      about: { '@id': `${siteUrl}/#practice` },
+      publisher: { '@id': `${siteUrl}/#practice` },
+      dateModified: pv.updated,
+      breadcrumb: { '@id': `${siteUrl}${pv.path}#breadcrumb` },
+    },
+    {
+      '@type': 'BreadcrumbList',
+      '@id': `${siteUrl}${pv.path}#breadcrumb`,
+      itemListElement: [
+        { '@type': 'ListItem', position: 1, name: 'Início', item: `${siteUrl}/` },
+        { '@type': 'ListItem', position: 2, name: pv.title, item: `${siteUrl}${pv.path}` },
+      ],
+    },
+  ],
+};
 
 // --- montagem do HTML -------------------------------------------------------
 const html = await readFile('site.html', 'utf8');
-const cssFiles = ['src/styles.css', 'src/photos.css', 'src/env-ui.css'];
-const css = (await Promise.all(cssFiles.map((f) => readFile(f, 'utf8')))).join('\n');
+
+// Dois bundles em vez de um: a home nao carrega o CSS da politica, e a politica
+// nao carrega o das fotos. styles.css entra nas duas porque e la que vivem o
+// header, o rodape e a tipografia.
+const readCss = async (files) => (await Promise.all(files.map((f) => readFile(f, 'utf8')))).join('\n');
+const css = await readCss(['src/styles.css', 'src/photos.css', 'src/env-ui.css']);
+const privacyCss = await readCss(['src/styles.css', 'src/env-ui.css', 'src/privacy.css']);
+
+/**
+ * Header, rodape e o script do menu sao os mesmos nas duas paginas. Em vez de
+ * duplicar a marcacao num segundo template (que dia desses sairia do lugar sem
+ * ninguem notar), o build recorta esses blocos do proprio site.html pelos
+ * marcadores <!--#shell:nome-->.
+ */
+function shell(name) {
+  const m = html.match(new RegExp(`<!--#shell:${name}-->([\\s\\S]*?)<!--/#shell:${name}-->`));
+  if (!m) throw new Error(`Bloco <!--#shell:${name}--> nao encontrado em site.html`);
+  return m[1];
+}
+
+// Fora da home, as ancoras do menu (#sobre, #cuidados...) precisam voltar para
+// a raiz — senao viram links mortos para secoes que nao existem em /privacidade.
+const toHomeAnchors = (s) => s.replaceAll('href="#', 'href="/#');
 
 // O separador precisa ficar fora do esc(), senao o "&" de &middot; e escapado
 // e a entidade aparece literal na pagina. O separador da esquerda tambem entra
@@ -400,44 +557,80 @@ const crmLine = site.doctor.crm
   ? ` &middot; <span class="crm">${[site.doctor.crm, site.doctor.rqe].filter(Boolean).map(esc).join(' &middot; ')}</span>`
   : '';
 
-let page = html
-  .replace('/*__STYLES__*/', css)
-  .replaceAll('__HEAD_SEO__', headSeo)
-  .replaceAll('__ANALYTICS_HEAD__', analyticsHead)
-  .replaceAll('__ENV_BADGE__', envBadge)
-  .replaceAll('__BODY_ATTR__', bodyAttr)
-  .replaceAll('__CONSENT_BANNER__', consentBanner)
-  .replaceAll('__PRIVACY_SECTION__', privacySection)
-  .replaceAll('__SERVICE_CARDS__', serviceCards)
-  .replaceAll('__FAQ_LIST__', faqList)
-  .replaceAll('__CRM__', crmLine)
-  .replaceAll('__PHONE_DISPLAY__', esc(phone.display))
-  .replaceAll('__PHONE_E164__', phone.e164)
-  .replaceAll('__WHATSAPP_URL__', `https://wa.me/${phone.e164.replace('+', '')}?text=${encodeURIComponent(site.business.whatsappText)}`)
-  .replaceAll('__OPENING_HOURS__', hoursText ? `<span><b>Horário:</b> ${esc(hoursText)}</span>` : '')
-  .replaceAll('__ADDRESS_FULL__', esc(fullAddress))
-  .replaceAll('__ADDRESS_STREET__', esc(addr.street))
-  .replaceAll('__ADDRESS_CITY__', esc(`${addr.district}, ${addr.city}-${addr.stateCode}`))
-  .replaceAll('__MAP_URL__', esc(mapUrl))
-  .replaceAll('__AREA_SERVED__', site.business.areaServed.map((c) => `<li>${esc(c)}</li>`).join(''));
+/** Substituicoes comuns as duas paginas (NAP, links, imagens). */
+function fill(tpl) {
+  let out = tpl
+    .replaceAll('__ANALYTICS_HEAD__', analyticsHead)
+    .replaceAll('__ENV_BADGE__', envBadge)
+    .replaceAll('__BODY_ATTR__', bodyAttr)
+    .replaceAll('__CONSENT_BANNER__', consentBanner)
+    .replaceAll('__PRIVACY_PATH__', pv.path)
+    .replaceAll('__PRIVACY_LABEL__', esc(pv.linkLabel))
+    .replaceAll('__CRM__', crmLine)
+    .replaceAll('__PHONE_DISPLAY__', esc(phone.display))
+    .replaceAll('__PHONE_E164__', phone.e164)
+    .replaceAll('__WHATSAPP_URL__', `https://wa.me/${phone.e164.replace('+', '')}?text=${encodeURIComponent(site.business.whatsappText)}`)
+    .replaceAll('__OPENING_HOURS__', hoursText ? `<span><b>Horário:</b> ${esc(hoursText)}</span>` : '')
+    .replaceAll('__ADDRESS_FULL__', esc(fullAddress))
+    .replaceAll('__ADDRESS_STREET__', esc(addr.street))
+    .replaceAll('__ADDRESS_CITY__', esc(`${addr.district}, ${addr.city}-${addr.stateCode}`))
+    .replaceAll('__MAP_URL__', esc(mapUrl))
+    .replaceAll('__AREA_SERVED__', site.business.areaServed.map((c) => `<li>${esc(c)}</li>`).join(''))
+    // Os marcadores de shell nao precisam viajar ate o navegador.
+    .replace(/<!--\/?#shell:[a-z]+-->/g, '');
 
-for (const [name, img] of Object.entries(images)) {
-  const token = `__${name.toUpperCase().replaceAll('-', '_')}__`;
-  page = page.replaceAll(token, `src="${img.path}" width="${img.w}" height="${img.h}"`);
+  for (const [name, img] of Object.entries(images)) {
+    const token = `__${name.toUpperCase().replaceAll('-', '_')}__`;
+    out = out.replaceAll(token, `src="${img.path}" width="${img.w}" height="${img.h}"`);
+  }
+  return out;
 }
 
-const leftovers = page.match(/__[A-Z_]+__|\/\*__STYLES__\*\//g);
-if (leftovers) throw new Error(`Placeholders nao substituidos: ${[...new Set(leftovers)].join(', ')}`);
+const page = fill(
+  html
+    .replace('/*__STYLES__*/', css)
+    .replaceAll('__HEAD_SEO__', headSeo)
+    .replaceAll('__SERVICE_CARDS__', serviceCards)
+    .replaceAll('__FAQ_LIST__', faqList),
+);
+
+// /privacidade reaproveita o shell da home. As imagens do consultorio ficam de
+// fora de proposito: numa pagina juridica elas so pesariam.
+const privacyPage = fill(
+  `<!doctype html><html lang="pt-BR"><head><meta charset="UTF-8">` +
+    `<meta name="viewport" content="width=device-width,initial-scale=1">` +
+    buildHead({
+      title: pv.metaTitle,
+      description: pv.metaDescription,
+      canonical: `${siteUrl}${pv.path}`,
+      jsonLd: privacyJsonLd,
+    }) +
+    `<style>${privacyCss}</style>__ANALYTICS_HEAD__</head><body__BODY_ATTR__>__ENV_BADGE__` +
+    `<a class="skip" href="#politica">Ir para o conteúdo</a>` +
+    toHomeAnchors(shell('nav')) +
+    privacyMain +
+    toHomeAnchors(shell('footer')) +
+    shell('menu') +
+    `__CONSENT_BANNER__</body></html>`,
+);
+
+for (const [label, out] of [['index.html', page], [`${pv.path}/index.html`, privacyPage]]) {
+  const leftovers = out.match(/__[A-Z_]+__|\/\*__STYLES__\*\/|<!--\/?#shell:/g);
+  if (leftovers) throw new Error(`${label}: placeholders nao substituidos: ${[...new Set(leftovers)].join(', ')}`);
+}
 
 // A partir daqui nao ha mais nada que possa falhar por conteudo — so agora
 // dist/ e recriado (ver comentario no topo).
 await rm('dist', { recursive: true, force: true });
 await mkdir('dist/assets', { recursive: true });
+await mkdir(`dist${pv.path}`, { recursive: true });
 for (const name of imageNames) await copyFile(`assets/${name}.webp`, `dist/assets/${name}.webp`);
 
-await writeFile('dist/index.html', page);
 // Pre-comprime para o nginx servir via gzip_static.
+await writeFile('dist/index.html', page);
 await writeFile('dist/index.html.gz', gzipSync(Buffer.from(page), { level: 9 }));
+await writeFile(`dist${pv.path}/index.html`, privacyPage);
+await writeFile(`dist${pv.path}/index.html.gz`, gzipSync(Buffer.from(privacyPage), { level: 9 }));
 
 // --- arquivos auxiliares ----------------------------------------------------
 // lastmod = a mais recente entre as duas fontes de conteudo. Usar so o
@@ -477,6 +670,11 @@ if (isProd) {
     .map((i) => `    <image:image><image:loc>${i.url}</image:loc></image:image>`)
     .join('\n');
 
+  // /privacidade entra indexavel de proposito: pagina de privacidade visivel e
+  // sinal de confianca que o Google valoriza em site de saude (YMYL), e ela nao
+  // compete por nenhuma busca que interessa. Prioridade baixa e changefreq anual
+  // porque o texto so muda quando o site muda. lastmod vem de privacy.updated —
+  // a data do documento, nao a do build.
   await writeFile(
     'dist/sitemap.xml',
     `<?xml version="1.0" encoding="UTF-8"?>
@@ -487,6 +685,12 @@ if (isProd) {
     <changefreq>monthly</changefreq>
     <priority>1.0</priority>
 ${sitemapImages}
+  </url>
+  <url>
+    <loc>${siteUrl}${pv.path}</loc>
+    <lastmod>${pv.updated}</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.3</priority>
   </url>
 </urlset>
 `,
@@ -526,8 +730,10 @@ await writeFile(
 );
 
 const kb = (n) => `${(n / 1024).toFixed(1)} KB`;
-console.log(`dist/index.html    ${kb(Buffer.byteLength(page))}`);
-console.log(`dist/index.html.gz ${kb((await stat('dist/index.html.gz')).size)}`);
+console.log(`dist/index.html    ${kb(Buffer.byteLength(page))} (gz ${kb((await stat('dist/index.html.gz')).size)})`);
+console.log(
+  `dist${pv.path}/    ${kb(Buffer.byteLength(privacyPage))} (gz ${kb((await stat(`dist${pv.path}/index.html.gz`)).size)})`,
+);
 console.log(`dist/assets/       ${imageNames.length} imagens`);
 console.log(`site url           ${siteUrl}`);
 console.log(`ambiente           ${siteEnv}${isProd ? ' (indexavel)' : ' (noindex + robots.txt Disallow)'}`);

@@ -54,8 +54,14 @@ createServer(async (req, res) => {
     return;
   }
 
+  // Espelha o `try_files $uri $uri/` do nginx: uma rota sem extensao, como
+  // /privacidade, e servida por dist/privacidade/index.html. Sem isto o dev
+  // devolveria 404 numa URL que funciona em producao — o pior tipo de
+  // divergencia entre ambientes, porque so aparece depois do deploy.
+  const asFile = path === '/' ? '/index.html' : extname(path) ? path : `${path.replace(/\/$/, '')}/index.html`;
+
   // resolve + prefixo garantem que "/../.." nao escape de dist/.
-  const file = resolve(join(ROOT, normalize(path === '/' ? '/index.html' : path)));
+  const file = resolve(join(ROOT, normalize(asFile)));
   if (file !== ROOT && !file.startsWith(ROOT + sep)) {
     res.writeHead(403).end();
     return;

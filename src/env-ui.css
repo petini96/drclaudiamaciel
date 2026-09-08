@@ -1,7 +1,10 @@
-/* Elementos injetados pelo build que nao fazem parte do conteudo editorial:
-   selo de ambiente (HOM/DEV), aviso de consentimento (LGPD) e a secao de
-   politica de privacidade. Mantidos fora de styles.css para deixar claro que
-   sao infraestrutura, nao layout do site. */
+﻿/* Elementos injetados pelo build que nao fazem parte do conteudo editorial:
+   selo de ambiente (HOM/DEV) e aviso de consentimento (LGPD). Mantidos fora de
+   styles.css para deixar claro que sao infraestrutura, nao layout do site.
+
+   Este arquivo entra nas DUAS paginas (home e /privacidade), porque o aviso de
+   cookies precisa aparecer em qualquer uma delas que seja a porta de entrada.
+   O visual da politica em si vive em src/privacy.css. */
 
 /* --- selo de ambiente ------------------------------------------------------
    So aparece fora de producao. Fica no topo ao centro porque essa faixa do
@@ -32,20 +35,6 @@
 .consent button[data-consent=denied]{background:transparent;color:var(--wine);border:1px solid #ddc9cd}
 @media(max-width:560px){.consent{padding:18px;gap:14px}.consentActions{width:100%}.consent button{flex:1}}
 
-/* --- politica de privacidade ----------------------------------------------
-   Secao da propria pagina (o site e de pagina unica: uma rota /privacidade
-   exigiria mudar nginx, sitemap e canonical). Fechada por padrao em <details>,
-   que mantem o texto no DOM para o crawler e e navegavel por teclado sem JS. */
-.privacy{background:#fff;border-top:1px solid #efe6e7;padding:56px clamp(24px,8vw,130px);scroll-margin-top:96px}
+/* Link da politica no rodape escuro. Fica aqui, e nao em privacy.css, porque
+   o rodape existe nas duas paginas. */
 .footerInfo a{color:#e0d3d7}
-.privacy>summary{display:flex;align-items:center;justify-content:space-between;gap:20px;list-style:none;cursor:pointer;color:var(--wine);font:600 20px 'Playfair Display',serif}
-.privacy>summary::-webkit-details-marker{display:none}
-.privacy>summary b{font-size:22px;line-height:1;font-weight:400}
-.privacy>summary b:after{content:'+'}
-.privacy[open]>summary b:after{content:'−'}
-.privacy .privacyLead{margin:14px 0 0;max-width:760px;color:var(--muted);font-size:14px;line-height:1.7}
-.privacy .privacyUpdated{margin:6px 0 0;font-size:11px;color:#9a8b8e}
-.privacyBody{margin-top:30px;max-width:780px}
-.privacyBody h3{font:600 15px 'DM Sans',sans-serif;color:var(--ink);margin:26px 0 8px}
-.privacyBody p{margin:0 0 10px;color:var(--muted);font-size:13px;line-height:1.75}
-.consentReset{margin-top:18px;background:none;border:0;border-bottom:1px solid var(--rose);padding:0 0 4px;color:var(--wine);font:700 13px 'DM Sans',sans-serif;cursor:pointer}

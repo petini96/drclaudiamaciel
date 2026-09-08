@@ -128,6 +128,23 @@ curl -I -u claudia:SENHA https://hom.drclaudiamaciel.com.br
 Esperado: **200**, o mesmo `X-Robots-Tag`, e no HTML
 `<meta name="robots" content="noindex,nofollow,noarchive,nosnippet">`.
 
+O site tem **duas** rotas, e as duas precisam passar no mesmo teste — uma página
+de privacidade indexável apontando para `hom.*` seria conteúdo duplicado do
+mesmo jeito:
+
+```bash
+curl -I -u claudia:SENHA https://hom.drclaudiamaciel.com.br/privacidade
+```
+
+Esperado: **200** (não 301 nem 404) e o mesmo `X-Robots-Tag`.
+
+E que o `sitemap.xml` **não** existe fora de produção — ele é o convite explícito
+para o Googlebot rastrear:
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' -u claudia:SENHA https://hom.drclaudiamaciel.com.br/sitemap.xml   # 404
+```
+
 E que produção continua limpa:
 
 ```bash
@@ -161,5 +178,36 @@ aponta para a propriedade GA4 de produção, não para a de homologação.
 SITE_ENV=hom SITE_URL=https://hom.drclaudiamaciel.com.br GA_MEASUREMENT_ID=G-XXXX npm run dev
 ```
 
+No PowerShell:
+
+```bash
+$env:SITE_ENV='hom'; $env:SITE_URL='https://hom.drclaudiamaciel.com.br'; $env:GA_MEASUREMENT_ID='G-XXXX'; npm run dev
+```
+
 Sem variáveis nenhumas, o `npm run dev` roda como `SITE_ENV=dev`: também
 `noindex`, também com o selo de ambiente, e sem Google Analytics.
+
+---
+
+## Testar o GA4 em homologação
+
+A propriedade GA4 de homologação precisa ser **outra**, não a de produção —
+senão os eventos de teste entram nos relatórios reais e contaminam a série
+histórica. O `GA_MEASUREMENT_ID` do `.env` de hom é o dessa segunda propriedade.
+
+Com `SITE_ENV=hom` o build liga `debug_mode: true` automaticamente, então os
+eventos aparecem em tempo real no **DebugView** do GA4 (Administrador →
+DebugView) — sem esperar as 24–48 h dos relatórios normais.
+
+Dois detalhes que costumam gerar "o Analytics não está funcionando":
+
+1. **Nada dispara antes do aceite.** O consentimento nasce como `denied` e o
+   `gtag.js` só é baixado depois do clique em "Aceitar". Se o DebugView está
+   vazio, o primeiro lugar para olhar é se o banner ainda está na tela.
+2. **A escolha fica salva.** Depois de aceitar uma vez, o banner não volta. Para
+   repetir o teste do zero, use o botão "Alterar minha preferência de cookies"
+   no fim de `/privacidade` — que é o mesmo caminho da paciente.
+
+O evento a validar é o `generate_lead`, com o parâmetro `method` (`whatsapp` ou
+`telefone`): clique no botão de WhatsApp e num link de telefone e confirme que
+os dois aparecem no DebugView. É a única conversão do site.

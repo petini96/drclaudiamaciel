@@ -94,8 +94,13 @@ WhatsApp de telefone nos relatórios.
 ## O banner e a política de privacidade
 
 - O texto do banner vive em `site.analytics.consent`, em `src/site-data.js`.
-- A política é a seção `#privacidade` da própria página, gerada de
-  `site.privacy`. Um banner de cookies sem política acessível não cumpre a LGPD.
+- A política é a página **`/privacidade`** (`dist/privacidade/index.html`),
+  gerada de `site.privacy`. Um banner de cookies sem política acessível não
+  cumpre a LGPD. O link para ela aparece em dois lugares: no rodapé de todas as
+  páginas e dentro do próprio banner, **antes** do aceite — que é o "acesso
+  facilitado e ostensivo" dos arts. 6º, VI e 9º da LGPD. A lei não exige o texto
+  embutido na home, e o Guia Orientativo de Cookies da ANPD recomenda justamente
+  este modelo em camadas.
 - A escolha é gravada em `localStorage` (`cm-consent`), não em cookie: ela nunca
   sai do navegador de quem visitou.
 - O botão **"Alterar minha preferência de cookies"**, no fim da política, apaga

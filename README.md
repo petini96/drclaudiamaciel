@@ -1,10 +1,17 @@
 # Site — Dra. Claudia Maciel
 
-Landing page de página única para a Dra. Claudia Maciel (Ginecologista & Obstetra, Bonito/MS).
+Landing page para a Dra. Claudia Maciel (Ginecologista & Obstetra, Bonito/MS).
 
-O build gera um HTML estático (`dist/index.html`) com o CSS embutido e as imagens `.webp`
-servidas como arquivos reais em `dist/assets/`. Em produção, um nginx alpine serve os
-arquivos e o **Traefik** faz o TLS e o roteamento.
+Duas rotas: a home (`/`), de página única, e a política de privacidade
+(`/privacidade`), que fica separada porque o texto é longo o bastante para
+diluir a relevância da home e porque uma URL estável é exigida por Meta Ads e
+Google Ads. As duas compartilham header, rodapé e o script do menu, recortados
+de `site.html` pelos marcadores `<!--#shell:nome-->`.
+
+O build gera HTML estático (`dist/index.html` e `dist/privacidade/index.html`)
+com o CSS embutido e as imagens `.webp` servidas como arquivos reais em
+`dist/assets/`. Em produção, um nginx alpine serve os arquivos e o **Traefik**
+faz o TLS e o roteamento.
 
 ## Estrutura
 
@@ -12,7 +19,8 @@ arquivos e o **Traefik** faz o TLS e o roteamento.
 site.html                              markup (fonte da verdade do layout)
 src/site-data.js                       NAP, SEO, serviços, FAQ e política de privacidade
 src/styles.css, src/photos.css         estilos, injetados em /*__STYLES__*/
-src/env-ui.css                         selo de ambiente, aviso de cookies e política
+src/env-ui.css                         selo de ambiente e aviso de cookies (as duas páginas)
+src/privacy.css                        visual de /privacidade (só nessa página)
 assets/*.webp                          imagens, copiadas para dist/assets/
 build.mjs                              gera dist/ (html, meta tags, JSON-LD, robots, sitemap, manifest, 404)
 scripts/dev.mjs                        servidor local com rebuild automático (npm run dev)
@@ -185,8 +193,9 @@ O site é só metade do trabalho. Para aparecer no mapa e no pacote local do Goo
 4. **Citações NAP** consistentes em Doctoralia, BoaConsulta e agenda.app.br — ver as
    divergências listadas em "Pendências" acima.
 5. **Conteúdo novo e recorrente** — um blog com artigos (ex.: "pré-natal em Bonito",
-   "quando fazer o preventivo") é o caminho para ranquear em cauda longa. Hoje o site é uma
-   página única; publicar conteúdo exigiria acrescentar rotas.
+   "quando fazer o preventivo") é o caminho para ranquear em cauda longa. O caminho para
+   isso já existe: `/privacidade` mostra como acrescentar uma rota (bloco `<!--#shell:-->`
+   em `site.html`, entrada no `location` do nginx e no `sitemap.xml`).
 
 ---
 
@@ -241,9 +250,15 @@ imagem.
 
 ### 404
 
-Qualquer URL que não seja `/` devolve **404 de verdade** com `dist/404.html`. Antes, o
-`try_files $uri /index.html` devolvia o index com status 200 em qualquer endereço, o que o
-Google classifica como *soft 404* e trata como erro de qualidade.
+Qualquer URL fora das duas rotas do site (`/` e `/privacidade`) devolve **404 de verdade**
+com `dist/404.html`. Antes, o `try_files $uri /index.html` devolvia o index com status 200
+em qualquer endereço, o que o Google classifica como *soft 404* e trata como erro de
+qualidade.
+
+`/privacidade` tem um `location =` próprio no nginx apontando para
+`dist/privacidade/index.html`. É de propósito: sem ele, o módulo `index` responderia um 301
+para acrescentar a barra final, e o canonical da página é `/privacidade`, sem barra.
+O `scripts/dev.mjs` faz o mesmo mapeamento, para o local não divergir de produção.
 
 ### Atualizar o site
 
