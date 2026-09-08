@@ -86,9 +86,24 @@ const faqList = site.faq
 // --- dados estruturados (JSON-LD) ------------------------------------------
 const { address: addr, geo, phone } = site.business;
 const fullAddress = `${addr.street} — ${addr.district}, ${addr.city}-${addr.stateCode}`;
-const mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-  `${addr.street}, ${addr.district}, ${addr.city}, ${addr.stateCode}`,
-)}`;
+
+// O endereco como texto de busca alimenta os QUATRO destinos de mapa da pagina.
+// Sai de uma variavel so de proposito: e o endereco, e nao a coordenada, que o
+// Google geocodifica com precisao aqui — `business.geo` ainda esta marcado
+// [CONFERIR] no site-data, e um mapa com o pino no lugar errado e pior do que
+// mapa nenhum numa pagina de consultorio.
+const addressQuery = `${addr.street}, ${addr.district}, ${addr.city}, ${addr.stateCode}`;
+const mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addressQuery)}`;
+const mapDirections = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(addressQuery)}`;
+const wazeUrl = `https://waze.com/ul?q=${encodeURIComponent(addressQuery)}&navigate=yes`;
+// `output=embed` e a forma de embutir o Google Maps sem chave de API. O iframe
+// NAO vai no HTML entregue: ele so e criado quando a visitante clica no mapa
+// (ver a secao #localizacao no site.html). Motivo: um iframe do Google no HTML
+// inicial faria uma requisicao a terceiro — com cookies — antes de qualquer
+// consentimento, o que contradiz o modelo do resto do site (ver o bloco do
+// Consent Mode mais abaixo) e a propria politica de privacidade. De quebra,
+// evita ~700 KB de JS de terceiro concorrendo com o carregamento da pagina.
+const mapEmbed = `https://www.google.com/maps?q=${encodeURIComponent(addressQuery)}&z=17&hl=pt-BR&output=embed`;
 const hero = images[site.seo.ogImage];
 
 // --- interpolacao de texto --------------------------------------------------
@@ -210,6 +225,34 @@ const credentialCards = site.credentials
       `<li data-reveal><span class="credIcon" aria-hidden="true">${cr.icon}</span>` +
       `<span class="credLabel">${esc(cr.label)}</span>` +
       `<strong>${fillText(cr.value)}</strong><p>${fillText(cr.text)}</p></li>`,
+  )
+  .join('');
+
+// --- depoimentos ------------------------------------------------------------
+// TRAVA DE SEGURANCA, no mesmo espirito da que impede um build indexavel com a
+// URL de homologacao (topo do arquivo). Depoimento ficticio no site de uma
+// medica e publicidade enganosa (CDC, art. 37) e risco etico perante o CRM;
+// o custo de descobrir isso DEPOIS de publicar nao se compara ao de um build
+// que falha aqui. O contexto completo esta em site-data.js -> testimonials.
+const tst = site.testimonials;
+if (isProd && tst.enabled && tst.placeholder) {
+  throw new Error(
+    'SITE_ENV=prod com depoimentos marcados como placeholder (ficticios).\n' +
+      '  Resolva de uma destas formas em src/site-data.js -> testimonials:\n' +
+      '  1) troque os itens por depoimentos reais, autorizados por escrito, e ponha placeholder: false;\n' +
+      '  2) desligue a secao com enabled: false ate ter os textos reais.\n' +
+      '  Leia o comentario da chave antes: ha restricao do CFM ao uso de depoimento em publicidade medica.',
+  );
+}
+
+// Sem estrela e sem nota, de proposito: nota media no proprio site e review de
+// LocalBusiness auto-declarado, contra as diretrizes do Google (README > SEO).
+// Nada daqui entra no JSON-LD pelo mesmo motivo.
+const testimonialCards = tst.items
+  .map(
+    (t) =>
+      `<li data-reveal><figure><blockquote><p>${esc(t.text)}</p></blockquote>` +
+      `<figcaption><b>${esc(t.name)}</b><span>${esc(t.meta)}</span></figcaption></figure></li>`,
   )
   .join('');
 
@@ -755,6 +798,8 @@ const css = await readCss([
   'src/styles.css',
   'src/photos.css',
   'src/credentials.css',
+  'src/testimonials.css',
+  'src/location.css',
   'src/env-ui.css',
   'src/motion.css',
 ]);
@@ -770,6 +815,29 @@ function shell(name) {
   const m = html.match(new RegExp(`<!--#shell:${name}-->([\\s\\S]*?)<!--/#shell:${name}-->`));
   if (!m) throw new Error(`Bloco <!--#shell:${name}--> nao encontrado em site.html`);
   return m[1];
+}
+
+/**
+ * Blocos que podem nao existir na pagina: <!--#opt:nome--> ... <!--/#opt:nome-->.
+ * `keep` true mantem o conteudo e descarta so os marcadores; false apaga o
+ * bloco inteiro.
+ *
+ * Existe para a secao de depoimentos poder ser desligada (site-data.js ->
+ * testimonials.enabled) sem deixar marcacao morta no HTML e sem que a alternativa
+ * fosse trazer a marcacao dela para dentro do build — o site.html e a fonte da
+ * verdade do layout, e uma secao inteira montada em template string aqui seria a
+ * primeira a sair do padrao do resto.
+ *
+ * Falha alto quando o marcador nao existe: um <!--#opt:--> escrito errado seria
+ * apagado em silencio pela limpeza de comentarios do fill(), e a secao sumiria
+ * da pagina sem nenhum aviso.
+ */
+function optionalBlocks(tpl, flags) {
+  return Object.entries(flags).reduce((acc, [name, keep]) => {
+    const re = new RegExp(`<!--#opt:${name}-->([\\s\\S]*?)<!--/#opt:${name}-->`);
+    if (!re.test(acc)) throw new Error(`Bloco <!--#opt:${name}--> nao encontrado em site.html`);
+    return acc.replace(re, (_, inner) => (keep ? inner : ''));
+  }, tpl);
 }
 
 // Fora da home, as ancoras do menu (#sobre, #cuidados...) precisam voltar para
@@ -799,10 +867,18 @@ function fill(tpl) {
     .replaceAll('__PHONE_E164__', phone.e164)
     .replaceAll('__WHATSAPP_URL__', `https://wa.me/${phone.e164.replace('+', '')}?text=${encodeURIComponent(site.business.whatsappText)}`)
     .replaceAll('__OPENING_HOURS__', hoursText ? `<span><b>Horário:</b> ${esc(hoursText)}</span>` : '')
+    // Mesmo dado, sem a marcacao do bloco de contato: o cartao do mapa monta a
+    // linha de horario com o rotulo proprio dele. Ali o rotulo e fixo, entao o
+    // texto nao pode sair vazio quando `openingHours` estiver vazio — dai o
+    // fallback, que continua verdadeiro seja qual for o horario.
+    .replaceAll('__HOURS_TEXT__', esc(hoursText || 'Consulte os horários pelo WhatsApp'))
     .replaceAll('__ADDRESS_FULL__', esc(fullAddress))
     .replaceAll('__ADDRESS_STREET__', esc(addr.street))
     .replaceAll('__ADDRESS_CITY__', esc(`${addr.district}, ${addr.city}-${addr.stateCode}`))
     .replaceAll('__MAP_URL__', esc(mapUrl))
+    .replaceAll('__MAP_DIRECTIONS__', esc(mapDirections))
+    .replaceAll('__MAP_EMBED__', esc(mapEmbed))
+    .replaceAll('__WAZE_URL__', esc(wazeUrl))
     .replaceAll('__AREA_SERVED__', site.business.areaServed.map((c) => `<li>${esc(c)}</li>`).join(''))
     // Comentario de HTML tambem nao e informacao para o navegador. Este replace
     // cobre os marcadores <!--#shell:nome--> (que ja foram consumidos pelo
@@ -819,11 +895,12 @@ function fill(tpl) {
 }
 
 const page = fill(
-  typeWords(html)
+  optionalBlocks(typeWords(html), { depoimentos: tst.enabled })
     .replace('/*__STYLES__*/', css)
     .replaceAll('__HEAD_SEO__', headSeo)
     .replaceAll('__SERVICE_CARDS__', serviceCards)
     .replaceAll('__CREDENTIAL_ITEMS__', credentialCards)
+    .replaceAll('__TESTIMONIAL_CARDS__', testimonialCards)
     .replaceAll('__FAQ_LIST__', faqList),
 );
 
@@ -848,7 +925,7 @@ const privacyPage = fill(
 );
 
 for (const [label, out] of [['index.html', page], [`${pv.path}/index.html`, privacyPage]]) {
-  const leftovers = out.match(/__[A-Z_]+__|\/\*__STYLES__\*\/|<!--\/?#shell:/g);
+  const leftovers = out.match(/__[A-Z_]+__|\/\*__STYLES__\*\/|<!--\/?#(shell|opt):/g);
   if (leftovers) throw new Error(`${label}: placeholders nao substituidos: ${[...new Set(leftovers)].join(', ')}`);
 }
 

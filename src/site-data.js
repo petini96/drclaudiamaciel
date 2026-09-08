@@ -224,6 +224,76 @@ export const site = {
     // },
   ],
 
+  // --- Depoimentos (secao #depoimentos) --------------------------------------
+  // ⚠️ CONTEUDO PROVISORIO — NAO PUBLICAR COMO ESTA.
+  //
+  // Os textos abaixo sao FICTICIOS, escritos apenas para avaliar o layout da
+  // secao. Enquanto `placeholder` for true o build de PRODUCAO falha de
+  // proposito (a trava fica no build.mjs, logo depois dos cartoes de formacao):
+  // depoimento inventado no site de uma medica e publicidade enganosa (CDC,
+  // art. 37) — e o tipo de coisa que, num site de saude, custa muito mais caro
+  // do que o layout bonito que ela paga.
+  //
+  // ANTES DE LIGAR ISTO EM PRODUCAO, CONFERIR COM O CRM-MS: as normas do CFM
+  // sobre publicidade medica (hoje a Res. CFM 2.336/2023) restringem o uso de
+  // depoimento de paciente como peca publicitaria. O comentario de
+  // `credentials`, mais acima, ja registrava essa restricao quando a secao de
+  // formacao foi escrita. O caminho de prova social que nao esbarra nisso —
+  // e que ainda por cima move o ranking local, ver README > SEO — e pedir a
+  // avaliacao no Google Business Profile, que vive FORA do site.
+  //
+  // Se a secao for descartada, basta `enabled: false`: o bloco
+  // <!--#opt:depoimentos--> do site.html sai inteiro do HTML gerado, sem
+  // sobrar marcacao morta.
+  //
+  // O que nao fazer aqui, em nenhum cenario:
+  //   - prometer resultado ("sumiu a dor", "resolveu o meu problema");
+  //   - citar diagnostico, procedimento ou medicamento de uma paciente;
+  //   - inventar nota, estrela ou "media de avaliacoes" — review proprio de
+  //     LocalBusiness e contra as diretrizes do Google (README > SEO), e por
+  //     isso nada daqui entra no JSON-LD.
+  testimonials: {
+    enabled: true,
+    // Trava. Vire para false SO quando todos os itens forem depoimentos reais,
+    // com autorizacao por escrito da paciente e revisao do texto pela Dra.
+    placeholder: true,
+    // `name`: primeiro nome + inicial e o suficiente. Nome completo de paciente
+    // num site publico e exposicao desnecessaria, mesmo com autorizacao.
+    // `meta`: cidade + contexto generico. Nunca o motivo clinico da consulta.
+    items: [
+      {
+        text: 'Foi a primeira vez que saí de uma consulta ginecológica entendendo tudo o que tinha sido conversado. A Dra. Claudia explica com calma e não deixa a gente ir embora com dúvida.',
+        name: 'Ana P.',
+        meta: 'Bonito-MS · Consulta de rotina',
+      },
+      {
+        text: 'Fiz todo o meu pré-natal com ela. Em cada retorno havia tempo para conversar, e isso fez diferença numa fase em que a gente fica insegura com tudo.',
+        name: 'Juliana R.',
+        meta: 'Jardim-MS · Pré-natal',
+      },
+      {
+        text: 'Cheguei achando que ia ouvir que era “coisa da idade”. Fui ouvida com atenção e as opções foram explicadas uma a uma, antes de qualquer decisão.',
+        name: 'Marina S.',
+        meta: 'Bonito-MS · Climatério',
+      },
+      {
+        text: 'Levei minha filha na primeira consulta dela e fiquei tranquila com o jeito da doutora: respeitosa, sem pressa e falando direto com a adolescente.',
+        name: 'Camila F.',
+        meta: 'Bodoquena-MS · Primeira consulta',
+      },
+      {
+        text: 'Venho de outra cidade e sempre vale a viagem. O consultório é acolhedor, o atendimento sai no horário marcado e ninguém fica com pressa de te despachar.',
+        name: 'Patrícia L.',
+        meta: 'Guia Lopes da Laguna-MS · Consulta de rotina',
+      },
+      {
+        text: 'O que mais me marcou foi não me sentir julgada em momento nenhum. Consegui falar de assuntos que nunca tinha conseguido falar com outro médico.',
+        name: 'Rafaela M.',
+        meta: 'Miranda-MS · Acompanhamento',
+      },
+    ],
+  },
+
   // Perguntas frequentes: viram <details> na pagina E FAQPage no JSON-LD.
   // O Google exige que a resposta do schema esteja visivel na pagina — por isso
   // os dois sao gerados daqui.
@@ -397,6 +467,7 @@ export const site = {
         title: 'Com quem os dados são compartilhados',
         paragraphs: [
           'O único terceiro envolvido é o Google, na condição de operador, por meio do Google Analytics 4. Não há pixel de rede social, ferramenta de remarketing ou qualquer outro rastreador nesta página.',
+          'O mapa da seção “Como chegar” vem do Google Maps e só é carregado quando você clica para abri-lo. Até esse clique, a página não faz nenhuma requisição ao Google por causa dele. Ao abrir o mapa, o Google passa a receber o seu endereço IP e pode gravar cookies próprios, regidos pelas políticas dele — se preferir, use o botão “Como chegar”, que leva você ao Google Maps em outra aba, sem embutir nada aqui.',
           'Os sinais de publicidade do Google (ad_storage, ad_user_data e ad_personalization) permanecem desativados mesmo depois do seu aceite.',
         ],
       },
@@ -471,7 +542,7 @@ export const site = {
       text: 'Dúvidas, pedidos de acesso ou de eliminação e revogação do consentimento podem ser tratados diretamente pelo {telefone} (telefone e WhatsApp), ou pessoalmente na {endereco}.',
       cookiesLabel: 'Alterar minha preferência de cookies',
     },
-    updated: '2026-09-07',
+    updated: '2026-09-08',
   },
 };
 

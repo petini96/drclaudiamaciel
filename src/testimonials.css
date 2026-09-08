@@ -1,0 +1,130 @@
+/* Secao "Depoimentos" (#depoimentos). So a home carrega este arquivo, e so
+   quando site-data.js -> testimonials.enabled e true.
+
+   POR QUE ISTO NAO SAO CARTOES — de novo. A primeira versao era uma grade de
+   tres caixas brancas sobre creme, e ficou indistinguivel da secao Cuidados:
+   mesmo fundo, mesma grade, mesma caixa com borda. E exatamente o erro que o
+   credentials.css ja documenta ter cometido antes. Duas grades de cartao na
+   mesma pagina nao leem como duas secoes; leem como uma repetida, e a segunda
+   sempre parece a versao fraca da primeira.
+
+   O que separa esta secao das outras agora sao TRES coisas ao mesmo tempo:
+
+     1) fundo escuro (--wine2, mais profundo que o --wine do bloco de contato,
+        para as duas faixas escuras da pagina nao se confundirem). Depois da
+        galeria branca e antes da jornada em blush, e a unica cor que nao funde
+        com nenhuma vizinha;
+     2) sem caixa: so fio de 1px separando as citacoes, como numa pagina de
+        revista. Nada de borda, sombra ou fundo proprio;
+     3) o texto da citacao e SERIFADO. No resto do site a serifa e reservada aos
+        titulos — usa-la no corpo aqui e o que faz o depoimento soar como voz de
+        alguem, e nao como mais um paragrafo da pagina.
+
+   Nao ha estrela, nota nem "media de avaliacoes" neste arquivo, e nao deve
+   passar a haver: review proprio de LocalBusiness contraria as diretrizes do
+   Google (README > SEO) e o CFM restringe depoimento em publicidade medica. */
+
+.testimonials {
+  padding: 110px clamp(24px, 7vw, 110px);
+  background: var(--wine2);
+  color: #f0e2e3;
+}
+/* O h2 herda a cor da secao; o `em` precisa de regra propria porque a global
+   (`h2 em{color:var(--wine)}`) pintaria o destaque de vinho sobre vinho. */
+.testimonials .eyebrow { color: #e7bdc3 }
+.testimonials h2 em { color: #f0cbd0 }
+.testimonials .sectionHead > p { color: #d3bcc1 }
+
+/* O fio vai em todas as colunas e sai na primeira de cada linha — mesma tatica
+   do credGrid: nos breakpoints muda so QUAIS itens perdem o fio, e sobrescrever
+   um :nth-child e mais simples do que um seletor de irmao. */
+.quoteGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.quoteGrid > li { padding: 0 42px; border-left: 1px solid rgba(255, 255, 255, .15) }
+.quoteGrid > li:nth-child(3n+1) { padding-left: 0; border-left: 0 }
+.quoteGrid > li:nth-child(3n) { padding-right: 0 }
+/* Segunda linha: o fio horizontal e o respiro que a impedem de colar na
+   primeira. As tres bordas sao continuas porque as colunas sao adjacentes. */
+.quoteGrid > li:nth-child(n+4) {
+  margin-top: 54px;
+  padding-top: 54px;
+  border-top: 1px solid rgba(255, 255, 255, .15);
+}
+
+.quoteGrid figure { display: flex; flex-direction: column; height: 100%; margin: 0 }
+.quoteGrid blockquote { margin: 0 0 28px }
+.quoteGrid blockquote p {
+  margin: 0;
+  font: 400 19px/1.62 'Playfair Display', serif;
+  color: #f0e2e3;
+}
+/* Aspas pendentes: a de abertura sai para fora da coluna (margin negativa) para
+   a PRIMEIRA LETRA do texto continuar alinhada com o resto do bloco. Sem isso a
+   citacao parece recuada em relacao a assinatura logo abaixo.
+   Entram por CSS, e nao no texto do site-data, porque sao pontuacao decorativa:
+   o <blockquote> ja diz ao leitor de tela que aquilo e uma citacao. */
+.quoteGrid blockquote p::before { content: '“'; margin-left: -.42em }
+.quoteGrid blockquote p::after { content: '”' }
+
+/* margin-top:auto encosta a assinatura no pe da coluna — e o que mantem os tres
+   nomes de cada linha na mesma altura, com citacoes de tamanhos diferentes.
+   Nome em sans, contra a serifa da citacao: e o corte que separa a voz da
+   paciente da identificacao dela. */
+.quoteGrid figcaption { margin-top: auto }
+.quoteGrid figcaption b { display: block; font: 700 13px 'DM Sans', sans-serif; color: #fff }
+.quoteGrid figcaption span {
+  display: block;
+  margin-top: 7px;
+  font-size: 10.5px;
+  letter-spacing: 1.3px;
+  text-transform: uppercase;
+  color: #c1a1a8;
+}
+
+/* A ressalva nao e enfeite juridico: "cada caso e um caso" e o que separa
+   relato de promessa de resultado, que a publicidade medica nao admite. */
+.quoteNote {
+  max-width: 700px;
+  margin: 60px 0 0;
+  padding-top: 30px;
+  border-top: 1px solid rgba(255, 255, 255, .15);
+  font-size: 12.5px;
+  line-height: 1.75;
+  color: #b7999f;
+}
+
+/* Duas colunas: o fio horizontal passa a separar a partir do 3o item. As regras
+   de 3 colunas sao zeradas antes de as novas entrarem — mesma especificidade,
+   entao vale a ultima declarada. */
+@media (max-width: 850px) {
+  .quoteGrid { grid-template-columns: repeat(2, minmax(0, 1fr)) }
+  .quoteGrid > li { padding: 0 34px; border-left: 1px solid rgba(255, 255, 255, .15) }
+  .quoteGrid > li:nth-child(n+4) { margin-top: 0; padding-top: 0; border-top: 0 }
+  .quoteGrid > li:nth-child(2n+1) { padding-left: 0; border-left: 0 }
+  .quoteGrid > li:nth-child(2n) { padding-right: 0 }
+  .quoteGrid > li:nth-child(n+3) {
+    margin-top: 46px;
+    padding-top: 46px;
+    border-top: 1px solid rgba(255, 255, 255, .15);
+  }
+}
+
+/* Uma coluna: so fio horizontal, entre um depoimento e o seguinte. */
+@media (max-width: 560px) {
+  .testimonials { padding: 75px 24px }
+  .quoteGrid { grid-template-columns: 1fr }
+  .quoteGrid > li,
+  .quoteGrid > li:nth-child(n+3) { margin-top: 0; padding: 0; border: 0 }
+  .quoteGrid > li + li {
+    margin-top: 36px;
+    padding-top: 36px;
+    border-top: 1px solid rgba(255, 255, 255, .15);
+  }
+  .quoteGrid blockquote p { font-size: 18px }
+  .quoteNote { margin-top: 42px; padding-top: 26px }
+}

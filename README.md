@@ -20,6 +20,8 @@ site.html                              markup (fonte da verdade do layout)
 src/site-data.js                       NAP, SEO, serviços, formação, FAQ e política de privacidade
 src/styles.css, src/photos.css         estilos, injetados em /*__STYLES__*/
 src/credentials.css                    seção "Formação e atuação" (só na home)
+src/testimonials.css                   seção "Depoimentos" (só na home, e só se ativada)
+src/location.css                       seção "Como chegar" / mapa (só na home)
 src/env-ui.css                         selo de ambiente e aviso de cookies (as duas páginas)
 src/privacy.css                        visual de /privacidade (só nessa página)
 src/motion.css                         animações e micro-interações (sempre o ÚLTIMO do bundle)
@@ -119,6 +121,45 @@ palavra aparece. **Para mudar a velocidade, mexa em `CHAR_MS`, `WORD_MS`, `PAUSE
 `LEAD_MS` no `build.mjs`, não no CSS.** O build imprime quanto a manchete leva, e
 `docs/SEO.md` (§7.2) explica por que essa exceção cabe no orçamento de LCP.
 
+### Mapa do consultório (seção "Como chegar")
+
+O mapa **não é um `<iframe>` no HTML entregue**. O que chega ao navegador é uma fachada
+desenhada em SVG (decorativa — não representa as ruas de Bonito) com um botão do tamanho do
+quadro; o `<iframe>` do Google Maps só é criado no clique, por um script de 5 linhas no fim
+do `site.html`. Três motivos:
+
+1. **LGPD** — um iframe do Google no HTML inicial faz requisição a terceiro, com cookies,
+   antes de qualquer consentimento. Isso contradiria o modelo usado no Analytics (nada é
+   baixado antes do aceite) e o texto da própria política de privacidade.
+2. **Performance** — o embed do Maps carrega centenas de KB de JS de terceiro, que
+   competiriam com o carregamento da página.
+3. **CLS** — a altura é do contêiner (`.mapCanvas`), não do iframe. A troca fachada → mapa
+   não muda a altura da seção.
+
+Sem JS o botão não faz nada, e o caminho continua sendo o link "Como chegar" do cartão ao
+lado. As quatro URLs (busca, rota, Waze e embed) saem da **mesma** string de endereço no
+`build.mjs` — pelo endereço, não pela coordenada, que ainda está marcada `[CONFERIR]`.
+
+### Depoimentos (seção opcional)
+
+A seção `#depoimentos` existe, mas hoje está com **textos fictícios** e por isso o build de
+produção **falha de propósito**:
+
+```
+Error: SITE_ENV=prod com depoimentos marcados como placeholder (ficticios).
+```
+
+Para resolver, em `src/site-data.js` → `testimonials`: ou trocar por depoimentos reais e
+autorizados (`placeholder: false`), ou desligar a seção (`enabled: false`, que apaga o bloco
+`<!--#opt:depoimentos-->` inteiro do HTML gerado). Em `hom`/`dev` a seção aparece normalmente,
+sem nenhum aviso na tela — quem revisar a homologação precisa saber, por este README, que os
+textos ainda são de exemplo.
+
+⚠️ **Antes de ativar, confirmar com o CRM-MS**: as normas do CFM sobre publicidade médica
+restringem depoimento de paciente como peça publicitária — a mesma restrição já registrada
+no comentário de `credentials`. Nada da seção entra no JSON-LD: nota/estrela própria de
+`LocalBusiness` é contra as diretrizes do Google (ver "Avaliações", mais abaixo).
+
 ---
 
 ## SEO
@@ -151,8 +192,9 @@ rich result no Google).
 
 As imagens deixaram de ser embutidas em base64 e passaram a ser arquivos reais. Isso
 resolve três coisas de uma vez: o Google Images só indexa URLs reais, `og:image` exige URL
-absoluta, e **o HTML caiu de ~238 KB para ~36 KB** (9 KB com gzip), o que adianta o First
-Contentful Paint.
+absoluta, e **o HTML caiu de ~238 KB para algumas dezenas de KB**, o que adianta o First
+Contentful Paint. Hoje a home sai com ~64 KB (17,6 KB com gzip) — o build imprime o número
+a cada rodada, e vale acompanhá-lo ao acrescentar seção.
 
 Além disso: `preload` do hero com `fetchpriority="high"` (LCP), `loading="lazy"` nas demais,
 `width`/`height` em todas as imagens (CLS zero), e o CSS do Google Fonts carregado sem
@@ -194,7 +236,10 @@ propriedade dela, e continua linkado no rodapé.
    um segundo endereço (Clovis Bevilaqua, 36) que não está mais em uso.
 4. **Coordenadas** (`business.geo`) — é o único dado ainda aproximado (centro de Bonito-MS).
    Pegue as exatas no Google Maps: botão direito no ponto → copiar coordenadas.
-5. **Revisar serviços e FAQ** (`services`, `faq`) — os textos foram ampliados com termos de
+5. **Decidir a seção de depoimentos** (`testimonials`) — hoje os textos são fictícios e o
+   build de produção falha por causa disso. Ou entram depoimentos reais e autorizados, ou a
+   seção é desligada. Confirmar antes a restrição do CFM (ver "Depoimentos", acima).
+6. **Revisar serviços e FAQ** (`services`, `faq`) — os textos foram ampliados com termos de
    busca ("pré-natal", "exames preventivos", "reposição hormonal", "laser íntimo", extraídos
    da própria bio do Instagram) e há uma pergunta nova sobre reposição hormonal. Confirme
    que descrevem exatamente o que é oferecido.

@@ -224,6 +224,54 @@ footer > a:hover { color: var(--rose) }
 .aboutPhoto img { transition: transform .8s var(--ease) }
 .aboutPhoto:hover img { transform: scale(1.03) }
 
+/* --- depoimentos ------------------------------------------------------------
+   Nada de "levantar" aqui. As citacoes nao sao cartoes (ver o cabecalho do
+   src/testimonials.css): nao ha caixa para erguer, e mover um bloco de texto
+   solto no hover so o faria parecer um botao. O unico gesto e a citacao clarear
+   — o mesmo que acontece quando se passa o olho por uma linha de revista. */
+.quoteGrid blockquote p { transition: color .35s var(--ease) }
+.quoteGrid > li:hover blockquote p { color: #fff }
+
+/* --- mapa -------------------------------------------------------------------
+   O halo do pino e a unica coisa que se move sozinha nesta secao. Serve para
+   dizer "isto e clicavel" sem escrever mais uma linha de texto — a fachada e
+   estatica, e um mapa estatico e facilmente lido como um mapa que travou.
+
+   Fica sob `.motion` como todo o resto: com "reduzir movimento" ligado, o halo
+   simplesmente nao pulsa. 2,6s por ciclo, bem abaixo dos 3 Hz que importam para
+   fotossensibilidade (ver regra 3 no topo do arquivo).
+
+   transform-box:fill-box e obrigatorio aqui: sem ele o transform-origin de um
+   elemento SVG e o canto do viewBox, e o halo cresceria para fora da tela em
+   vez de a partir do proprio centro. */
+@keyframes mapPulse {
+  from { transform: scale(.9); opacity: .2 }
+  to { transform: scale(1.5); opacity: 0 }
+}
+.motion .mapHalo {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: mapPulse 2.6s var(--ease-soft) infinite;
+}
+
+.mapArt { transition: transform .6s var(--ease) }
+.mapFacade:hover .mapArt,
+.mapFacade:focus-visible .mapArt { transform: scale(1.04) }
+.mapCta b { transition: transform .3s var(--ease), box-shadow .3s var(--ease) }
+.mapFacade:hover .mapCta b,
+.mapFacade:focus-visible .mapCta b { transform: translateY(-2px); box-shadow: 0 12px 28px rgba(20, 8, 12, .3) }
+.mapCta b span { display: inline-block; transition: transform .3s var(--ease) }
+.mapFacade:hover .mapCta b span { transform: translateX(4px) }
+
+.mapActions a { transition: transform .3s var(--ease), box-shadow .3s var(--ease), background-color .3s var(--ease) }
+.mapActions a:hover { transform: translateY(-2px) }
+.mapActions .mapGo:hover { box-shadow: 0 12px 28px rgba(104, 44, 66, .26) }
+.mapActions .mapAlt:hover { background: #fbf3f4 }
+.mapActions a span { display: inline-block; transition: transform .3s var(--ease) }
+.mapActions a:hover span { transform: translate(3px, -3px) }
+.mapFacts a { transition: color .3s var(--ease), border-color .3s var(--ease) }
+.mapFacts a:hover { border-bottom-color: var(--wine) }
+
 /* --- jornada ---------------------------------------------------------------- */
 .steps b { transition: transform .4s var(--ease), box-shadow .4s var(--ease) }
 .steps > li:hover b { transform: scale(1.07); box-shadow: 0 10px 24px rgba(104, 44, 66, .24) }
