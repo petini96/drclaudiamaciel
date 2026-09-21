@@ -25,9 +25,14 @@ src/location.css                       seção "Como chegar" / mapa (só na home
 src/env-ui.css                         selo de ambiente e aviso de cookies (as duas páginas)
 src/privacy.css                        visual de /privacidade (só nessa página)
 src/motion.css                         animações e micro-interações (sempre o ÚLTIMO do bundle)
-assets/*.webp                          imagens, copiadas para dist/assets/
+assets/*.webp                          fotos, copiadas para dist/assets/
+assets/logo-mark.webp                  monograma transparente (cabeçalho, rodapé, bloco de contato)
+assets/logo.webp, og-image.jpg         logotipo do JSON-LD e cartão de compartilhamento
+assets/favicon.ico, icon-*.png         ícones, copiados para a RAIZ de dist/
+assets/brand/logo-original.webp        logotipo original 2382×2382 (fonte dos arquivos acima)
 build.mjs                              gera dist/ (html, meta tags, JSON-LD, robots, sitemap, manifest, 404)
 scripts/dev.mjs                        servidor local com rebuild automático (npm run dev)
+scripts/gen-brand.mjs                  regera os ativos de marca a partir do logotipo original
 Dockerfile                             multi-stage: node (build) -> nginx (runtime)
 deploy/nginx.conf                      server block do nginx
 deploy/traefik/drclaudiamaciel.yml     rota do Traefik em produção
@@ -90,7 +95,7 @@ npm run build
 ```
 
 Dá para abrir o `dist/index.html` direto no navegador (as imagens usam caminho relativo),
-mas aí o favicon e o manifest não carregam — eles usam caminho absoluto (`/favicon.svg`), que
+mas aí o favicon, o manifest e a logo do cabeçalho não carregam — usam caminho absoluto, que
 só resolve sob um servidor. Para conferir o site de verdade, use o `npm run dev`.
 
 Para editar **conteúdo indexável** (título, descrição, serviços, formação, FAQ, endereço,
@@ -160,6 +165,34 @@ restringem depoimento de paciente como peça publicitária — a mesma restriç�
 no comentário de `credentials`. Nada da seção entra no JSON-LD: nota/estrela própria de
 `LocalBusiness` é contra as diretrizes do Google (ver "Avaliações", mais abaixo).
 
+### Logotipo
+
+Tudo em `assets/` que leva a marca é **gerado** a partir de um único arquivo,
+`assets/brand/logo-original.webp` (2382×2382, com o fundo creme chapado do próprio
+logotipo). O `npm run build` só copia o resultado — o site não tem dependência de
+processamento de imagem, e manter assim é o que garante que ele continue construindo com
+`node build.mjs` e mais nada.
+
+| Arquivo | Onde aparece |
+|---|---|
+| `logo-mark.webp` | Monograma recortado, fundo transparente. Cabeçalho, rodapé e o selo do bloco de contato — o mesmo arquivo serve ao creme e ao rodapé quase preto |
+| `logo.webp` | Logotipo completo sobre creme. Vai no `logo` do JSON-LD (o Google usa esse campo no Knowledge Panel) |
+| `og-image.jpg` | Cartão 1200×630 da prévia de link. **JPEG**, e não WebP como o resto do site: a prévia do WhatsApp não renderiza WebP de forma confiável |
+| `favicon.ico` (16/32/48), `apple-touch-icon.png`, `icon-192.png`, `icon-512.png` | Ícones. Vão para a **raiz** de `dist/`, porque o navegador e o iOS os pedem por caminho fixo, sem olhar o HTML |
+
+Para trocar o logotipo: substitua `assets/brand/logo-original.webp` e rode
+
+```bash
+npx --yes -p sharp@0.34 node scripts/gen-brand.mjs
+```
+
+O script está comentado com o motivo de cada corte — inclusive por que o favicon usa o
+monograma achatado no marrom escuro do letreiro (a 16px o degradê bronze some no fundo) e
+como o fundo creme é recortado em alfa sem deixar halo.
+
+⚠️ Os ícones da raiz saem com `max-age=604800`, não com o `immutable` de `/assets/`: quem já
+visitou o site pode levar até uma semana para ver um logotipo novo na aba.
+
 ---
 
 ## SEO
@@ -185,7 +218,9 @@ rich result no Google).
 | `openingHoursSpecification` | Habilita o "aberto agora" na SERP; a linha visível de horário sai do mesmo array |
 | `robots.txt` | Libera tudo + aponta o sitemap (inclusive para GPTBot / Google-Extended) |
 | `sitemap.xml` | URL, `lastmod` e extensão *image sitemap* com as 5 fotos |
-| `favicon.svg` + `site.webmanifest` | O Google exige favicon para exibir o ícone na SERP mobile |
+| `favicon.ico` + ícones PNG + `site.webmanifest` | O Google exige favicon para exibir o ícone na SERP mobile |
+| `og:image` / `twitter:image` | Cartão 1200×630 com a logo (`assets/og-image.jpg`) — é o que aparece ao compartilhar o link |
+| `logo` no JSON-LD | Logotipo da entidade, separado da foto da médica (`image`) |
 | `404.html` | Evita *soft 404* (ver nginx abaixo) |
 
 ### Performance (Core Web Vitals)
@@ -310,7 +345,7 @@ resolvendo para emitir o certificado. `www` é redirecionado 301 para o domínio
 |---|---|
 | `/` (HTML) | `max-age=300, must-revalidate` |
 | `/assets/*` | `max-age=31536000, immutable` |
-| `favicon.svg`, `site.webmanifest` | `max-age=604800` |
+| `favicon.ico`, `apple-touch-icon.png`, `icon-*.png`, `site.webmanifest` | `max-age=604800` |
 | `robots.txt`, `sitemap.xml` | `max-age=86400` |
 
 O HTML aparece atualizado em até 5 minutos. Como as imagens são imutáveis por um ano,

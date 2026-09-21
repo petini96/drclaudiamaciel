@@ -69,9 +69,10 @@ propriedade dela, e segue linkado no rodapé.
 | `meta description` | 155 caracteres, com palavra-chave e chamada para ação |
 | `link rel=canonical` | Uma única URL indexável, sem duplicação |
 | `meta robots` | `index,follow` + `max-snippet:-1` + **`max-image-preview:large`** (habilita a miniatura grande no resultado) |
-| Open Graph + Twitter Card | Prévia com imagem ao compartilhar no WhatsApp, Instagram, Facebook e X |
+| Open Graph + Twitter Card | Prévia ao compartilhar no WhatsApp, Instagram, Facebook e X. A imagem é o **cartão de marca** (`assets/og-image.jpg`, 1200×630, JPEG) e não a foto do hero: quem recebe o link precisa reconhecer de quem é o site antes de ler o título |
 | `geo.region`, `geo.position`, `ICBM` | Sinais de geolocalização para busca local |
-| `favicon.svg` + `site.webmanifest` | O Google **exige** favicon para exibir o ícone do site na SERP mobile |
+| `favicon.ico` (16/32/48) + `icon-192/512.png` + `apple-touch-icon.png` + `site.webmanifest` | O Google **exige** favicon para exibir o ícone do site na SERP mobile |
+| `logo` no `@graph` | Logotipo da entidade, separado do `image` (a foto da médica). É o campo que o Google usa para representar a marca no Knowledge Panel — uma fotografia ali sai cortada e sem leitura |
 
 ### `sitemap.xml`
 
@@ -167,7 +168,7 @@ classifica isso como *soft 404* e trata como erro de qualidade, podendo desindex
 |---|---|
 | `/` (HTML) | `max-age=300, must-revalidate` |
 | `/assets/*` | `max-age=31536000, immutable` |
-| `favicon.svg`, `site.webmanifest` | `max-age=604800` |
+| `favicon.ico`, `apple-touch-icon.png`, `icon-*.png`, `site.webmanifest` | `max-age=604800` |
 | `robots.txt`, `sitemap.xml` | `max-age=86400` |
 
 > ⚠️ Como as imagens são imutáveis por um ano, **trocar uma foto mantendo o mesmo nome de
@@ -176,7 +177,10 @@ classifica isso como *soft 404* e trata como erro de qualidade, podendo desindex
 
 ### Outros
 
-- `/favicon.ico` → 301 para `/favicon.svg` (elimina um 404 por visita nos logs)
+- `/favicon.ico` e `/apple-touch-icon.png` servidos de verdade na raiz, com `access_log off`
+  (o navegador e o iOS pedem esses caminhos sozinhos; antes o `.ico` era um 301 para um SVG)
+- Ícones da raiz **fora** do `immutable` de `/assets/`: trocar o logotipo não pode depender de
+  cada visitante limpar o cache
 - `gzip_types` sem `image/webp` (já é comprimido — gzipar só gastava CPU)
 - **HSTS** no Traefik (`stsPreload`), eliminando o salto `http→https` na primeira visita
 - Redirect 301 de `www` para o domínio raiz (já existia)
@@ -317,7 +321,8 @@ o foco programático não desenha contorno — nenhum ajuste de estilo foi neces
 - Sem overflow horizontal em 1440px, 1280px e 375px
 - Menu mobile, acordeão do FAQ e âncoras testados; sem erros de console
 - Rotas conferidas: `/` 200, `robots.txt` 200, `sitemap.xml` 200,
-  `site.webmanifest` 200 (`application/manifest+json`), `favicon.svg` 200, URL inexistente **404**
+  `site.webmanifest` 200 (`application/manifest+json`), `favicon.ico` / `apple-touch-icon.png` /
+  `icon-192.png` / `icon-512.png` / `assets/og-image.jpg` 200, URL inexistente **404**
 
 ### Lighthouse (desktop, headless, contra o `dist/` servido localmente)
 
@@ -409,7 +414,8 @@ NAP inconsistente é o que mais trava SEO local:
 | Arquivo | Mudança |
 |---|---|
 | `src/site-data.js` | **novo** — NAP, SEO, serviços, formação e FAQ |
-| `build.mjs` | Gera meta tags, JSON-LD, cards, formação, FAQ, sitemap, robots, manifest, favicon e 404; remove comentários do CSS no bundle |
+| `build.mjs` | Gera meta tags, JSON-LD, cards, formação, FAQ, sitemap, robots, manifest e 404; copia os ativos de marca; remove comentários do CSS no bundle |
+| `scripts/gen-brand.mjs` | Gera logo, monograma, cartão de compartilhamento e ícones a partir de `assets/brand/logo-original.webp` (roda fora do build) |
 | `site.html` | H1 com palavra-chave, conteúdo ampliado, HTML semântico e acessível; `aria-label` dos links corrigidos, `tabindex="-1"` no alvo do skip link; seção `#formacao` (§7.1) |
 | `src/styles.css`, `src/photos.css` | Estilos dos novos elementos, foco visível, reduced-motion, contraste de cor em conformidade com WCAG AA |
 | `src/credentials.css` | **novo** — visual da seção "Formação e atuação" |

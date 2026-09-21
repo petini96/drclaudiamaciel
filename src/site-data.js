@@ -102,7 +102,11 @@ export const site = {
     title: 'Ginecologista e Obstetra em Bonito-MS | Dra. Claudia Maciel',
     description:
       'Dra. Claudia Maciel, ginecologista e obstetra em Bonito-MS. Consulta ginecológica, pré-natal e climatério com atendimento humanizado. Agende pelo WhatsApp.',
-    ogImage: 'claudia-hero',
+    // Imagem principal da home: e ela que recebe o `preload` (e a LCP da pagina)
+    // e que vira o `primaryImageOfPage` no JSON-LD. NAO e o que aparece ao
+    // compartilhar o link — esse e o cartao de marca, assets/og-image.jpg, que o
+    // build monta a partir do logotipo (ver scripts/gen-brand.mjs).
+    heroImage: 'claudia-hero',
     keywords: [
       'ginecologista em Bonito MS',
       'obstetra em Bonito MS',

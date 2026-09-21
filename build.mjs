@@ -48,6 +48,22 @@ function webpSize(buf) {
   throw new Error(`Formato WebP nao reconhecido: ${fmt}`);
 }
 
+/** Idem para o JPEG do cartao de compartilhamento: le o primeiro SOF. */
+function jpegSize(buf) {
+  let i = 2; // pula o SOI
+  while (i + 9 < buf.length) {
+    if (buf[i] !== 0xff) throw new Error('JPEG malformado: marcador esperado');
+    const marker = buf[i + 1];
+    // SOF0..SOF15 carregam as dimensoes; C4 (Huffman), C8 (extensao) e CC (aritmetico)
+    // caem na mesma faixa numerica mas nao sao "start of frame".
+    if (marker >= 0xc0 && marker <= 0xcf && ![0xc4, 0xc8, 0xcc].includes(marker)) {
+      return { h: buf.readUInt16BE(i + 5), w: buf.readUInt16BE(i + 7) };
+    }
+    i += 2 + buf.readUInt16BE(i + 2);
+  }
+  throw new Error('JPEG sem SOF');
+}
+
 // IMPORTANTE: nada e escrito em dist/ ate a validacao de placeholders passar
 // (mais abaixo). Se o `rm` viesse antes, um build quebrado apagaria o site e
 // deixaria dist/ vazio — o que, com o servidor de dev rodando, derruba a
@@ -63,6 +79,33 @@ for (const name of imageNames) {
   const { w, h } = webpSize(bytes);
   images[name] = { path: `assets/${name}.webp`, url: `${siteUrl}/assets/${name}.webp`, w, h };
 }
+
+// --- ativos de marca --------------------------------------------------------
+// Ficam fora de `imageNames` porque nao sao fotografia: nao entram no sitemap
+// de imagens (o Google Images nao tem o que fazer com um logotipo) e cada um
+// tem um formato escolhido pelo destino, nao pelo peso. Quem os gera, a partir
+// de assets/brand/logo-original.webp, e o scripts/gen-brand.mjs — e la que
+// estao as razoes de cada corte.
+//
+//   logo-mark  monograma recortado, fundo transparente. Cabecalho, rodape e o
+//              selo do bloco de contato.
+//   logo       logotipo completo sobre creme. Vai no `logo` do JSON-LD.
+//   og-image   cartao 1200x630 da previa de link. JPEG de proposito: a previa
+//              do WhatsApp nao renderiza WebP de forma confiavel, e o WhatsApp
+//              e por onde este site vai ser compartilhado de verdade.
+const brand = {};
+for (const file of ['logo-mark.webp', 'logo.webp', 'og-image.jpg']) {
+  const bytes = await readFile(`assets/${file}`);
+  const { w, h } = file.endsWith('.jpg') ? jpegSize(bytes) : webpSize(bytes);
+  brand[file.replace(/\.\w+$/, '')] = { path: `assets/${file}`, url: `${siteUrl}/assets/${file}`, w, h };
+}
+
+// Icones que vao para a RAIZ de dist/, e nao para /assets: o navegador pede
+// /favicon.ico e o iOS pede /apple-touch-icon.png por conta propria, sem nem
+// olhar o HTML. Um caminho com hash ou dentro de /assets quebraria isso.
+const iconFiles = ['favicon.ico', 'apple-touch-icon.png', 'icon-192.png', 'icon-512.png'];
+
+const og = brand['og-image'];
 
 // --- blocos de conteudo gerados a partir do site-data ----------------------
 const serviceCards = site.services
@@ -104,7 +147,7 @@ const wazeUrl = `https://waze.com/ul?q=${encodeURIComponent(addressQuery)}&navig
 // Consent Mode mais abaixo) e a propria politica de privacidade. De quebra,
 // evita ~700 KB de JS de terceiro concorrendo com o carregamento da pagina.
 const mapEmbed = `https://www.google.com/maps?q=${encodeURIComponent(addressQuery)}&z=17&hl=pt-BR&output=embed`;
-const hero = images[site.seo.ogImage];
+const hero = images[site.seo.heroImage];
 
 // --- interpolacao de texto --------------------------------------------------
 // Marcadores usados no site-data.js ({crm}, {endereco}...). Existem para que
@@ -340,7 +383,11 @@ const jsonLd = {
       url: `${siteUrl}/`,
       description: site.seo.description,
       image: { '@id': `${siteUrl}/#primaryimage` },
-      logo: hero.url,
+      // `image` e a foto da medica (o que ilustra a entidade); `logo` e o
+      // logotipo. Sao campos diferentes de proposito: o Google usa o `logo`
+      // para representar a marca no Knowledge Panel, e uma fotografia ali sai
+      // cortada e sem leitura.
+      logo: brand.logo.url,
       telephone: phone.e164,
       address: postalAddress,
       geo: { '@type': 'GeoCoordinates', latitude: geo.lat, longitude: geo.lng },
@@ -485,19 +532,24 @@ function buildHead({ title, description, canonical, jsonLd, local = false }) {
     `<meta property="og:url" content="${canonical}">`,
     `<meta property="og:title" content="${esc(title)}">`,
     `<meta property="og:description" content="${esc(description)}">`,
-    `<meta property="og:image" content="${hero.url}">`,
-    `<meta property="og:image:type" content="image/webp">`,
-    `<meta property="og:image:width" content="${hero.w}">`,
-    `<meta property="og:image:height" content="${hero.h}">`,
-    `<meta property="og:image:alt" content="${esc(site.doctor.fullName)}, ${esc(site.doctor.jobTitle.toLowerCase())} em ${esc(addr.city)}-${addr.stateCode}">`,
+    // O cartao de marca, nao a foto do hero: quem recebe o link no WhatsApp
+    // precisa reconhecer de quem e o site antes de ler o titulo.
+    `<meta property="og:image" content="${og.url}">`,
+    `<meta property="og:image:type" content="image/jpeg">`,
+    `<meta property="og:image:width" content="${og.w}">`,
+    `<meta property="og:image:height" content="${og.h}">`,
+    `<meta property="og:image:alt" content="Logotipo de ${esc(site.business.name)}">`,
     // Twitter/X.
     `<meta name="twitter:card" content="summary_large_image">`,
     `<meta name="twitter:title" content="${esc(title)}">`,
     `<meta name="twitter:description" content="${esc(description)}">`,
-    `<meta name="twitter:image" content="${hero.url}">`,
+    `<meta name="twitter:image" content="${og.url}">`,
     // Icones + manifest (o Google exige favicon para exibir o icone na SERP mobile).
-    `<link rel="icon" href="/favicon.svg" type="image/svg+xml">`,
-    `<link rel="mask-icon" href="/favicon.svg" color="${site.themeColor}">`,
+    // O .ico carrega 16/32/48 no mesmo arquivo; o `sizes` declara o tamanho que
+    // o navegador deve assumir sem precisar baixa-lo para descobrir.
+    `<link rel="icon" href="/favicon.ico" sizes="32x32">`,
+    `<link rel="icon" href="/icon-192.png" type="image/png" sizes="192x192">`,
+    `<link rel="apple-touch-icon" href="/apple-touch-icon.png">`,
     `<link rel="manifest" href="/site.webmanifest">`,
     // LCP: o hero comeca a baixar junto com o HTML.
     local ? `<link rel="preload" as="image" href="${hero.path}" fetchpriority="high">` : '',
@@ -862,6 +914,13 @@ function fill(tpl) {
     .replaceAll('__CONSENT_BANNER__', consentBanner)
     .replaceAll('__PRIVACY_PATH__', pv.path)
     .replaceAll('__PRIVACY_LABEL__', esc(pv.linkLabel))
+    // Caminho ABSOLUTO, ao contrario das fotos: o monograma esta no cabecalho e
+    // no rodape, blocos que /privacidade tambem usa. Um `assets/...` relativo
+    // viraria `/privacidade/assets/...` e daria 404 na segunda rota do site.
+    .replaceAll(
+      '__LOGO_MARK__',
+      `src="/${brand['logo-mark'].path}" width="${brand['logo-mark'].w}" height="${brand['logo-mark'].h}"`,
+    )
     .replaceAll('__CRM__', crmLine)
     .replaceAll('__PHONE_DISPLAY__', esc(phone.display))
     .replaceAll('__PHONE_E164__', phone.e164)
@@ -935,6 +994,8 @@ await rm('dist', { recursive: true, force: true });
 await mkdir('dist/assets', { recursive: true });
 await mkdir(`dist${pv.path}`, { recursive: true });
 for (const name of imageNames) await copyFile(`assets/${name}.webp`, `dist/assets/${name}.webp`);
+for (const { path } of Object.values(brand)) await copyFile(path, `dist/${path}`);
+for (const file of iconFiles) await copyFile(`assets/${file}`, `dist/${file}`);
 
 // Pre-comprime para o nginx servir via gzip_static.
 await writeFile('dist/index.html', page);
@@ -1020,23 +1081,24 @@ await writeFile(
       display: 'standalone',
       background_color: '#fbf8f3',
       theme_color: site.themeColor,
-      icons: [{ src: '/favicon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' }],
+      // Sem `maskable`: o Android recorta o icone maskable num circulo que come
+      // 20% de cada lado, e o monograma nao sobrevive a isso. Declarar so `any`
+      // faz o sistema desenhar o icone dentro de um contorno proprio, intacto.
+      icons: [
+        { src: '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+        { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+      ],
     },
     null,
     2,
   ),
 );
 
-await writeFile(
-  'dist/favicon.svg',
-  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="${site.themeColor}"/><circle cx="32" cy="32" r="25" fill="none" stroke="#c78f98" stroke-width="1.5"/><text x="32" y="41" text-anchor="middle" font-family="Georgia,'Times New Roman',serif" font-size="26" letter-spacing="1" fill="#fbf8f3">CM</text></svg>`,
-);
-
 // Pagina 404 real: sem ela o nginx devolveria o index com status 200 em qualquer
 // URL inexistente (soft 404), o que o Google trata como erro de qualidade.
 await writeFile(
   'dist/404.html',
-  `<!doctype html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,follow"><title>Página não encontrada | ${esc(site.business.shortName)}</title><link rel="icon" href="/favicon.svg" type="image/svg+xml"><style>body{margin:0;min-height:100vh;display:grid;place-items:center;text-align:center;padding:32px;background:#fbf8f3;color:#30272a;font-family:system-ui,-apple-system,'Segoe UI',sans-serif}h1{font:500 clamp(32px,6vw,52px)/1.1 Georgia,serif;color:${site.themeColor};margin:0 0 14px}p{color:#75696c;max-width:420px;margin:0 auto 26px;line-height:1.7}a{display:inline-block;background:${site.themeColor};color:#fff;text-decoration:none;padding:15px 24px;border-radius:999px;font-weight:700;font-size:14px}</style></head><body><main><h1>Página não encontrada</h1><p>O endereço que você acessou não existe ou foi movido. Volte para a página inicial para conhecer o atendimento da ${esc(site.doctor.fullName)}.</p><a href="/">Ir para a página inicial</a></main></body></html>`,
+  `<!doctype html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,follow"><title>Página não encontrada | ${esc(site.business.shortName)}</title><link rel="icon" href="/favicon.ico" sizes="32x32"><style>body{margin:0;min-height:100vh;display:grid;place-items:center;text-align:center;padding:32px;background:#fbf8f3;color:#30272a;font-family:system-ui,-apple-system,'Segoe UI',sans-serif}h1{font:500 clamp(32px,6vw,52px)/1.1 Georgia,serif;color:${site.themeColor};margin:0 0 14px}p{color:#75696c;max-width:420px;margin:0 auto 26px;line-height:1.7}a{display:inline-block;background:${site.themeColor};color:#fff;text-decoration:none;padding:15px 24px;border-radius:999px;font-weight:700;font-size:14px}</style></head><body><main><h1>Página não encontrada</h1><p>O endereço que você acessou não existe ou foi movido. Volte para a página inicial para conhecer o atendimento da ${esc(site.doctor.fullName)}.</p><a href="/">Ir para a página inicial</a></main></body></html>`,
 );
 
 const kb = (n) => `${(n / 1024).toFixed(1)} KB`;
@@ -1044,7 +1106,8 @@ console.log(`dist/index.html    ${kb(Buffer.byteLength(page))} (gz ${kb((await s
 console.log(
   `dist${pv.path}/    ${kb(Buffer.byteLength(privacyPage))} (gz ${kb((await stat(`dist${pv.path}/index.html.gz`)).size)})`,
 );
-console.log(`dist/assets/       ${imageNames.length} imagens`);
+console.log(`dist/assets/       ${imageNames.length} fotos + ${Object.keys(brand).length} de marca`);
+console.log(`icones             ${iconFiles.length} na raiz (${og.w}x${og.h} no cartao de compartilhamento)`);
 // Fica no resumo porque e um numero de orcamento, nao curiosidade: e quando a
 // manchete termina de ser escrita. Ver docs/SEO.md, §7.2.
 console.log(`manchete           ${(typedTotalMs / 1000).toFixed(2)}s de escrita`);

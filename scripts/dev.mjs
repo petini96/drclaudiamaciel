@@ -1,7 +1,7 @@
 // Servidor de desenvolvimento, sem dependencias.
 //
 // Existe porque abrir dist/index.html direto no navegador (file://) nao cobre
-// tudo: favicon e manifest usam caminho absoluto ("/favicon.svg"), e o 404 nao
+// tudo: favicon e manifest usam caminho absoluto ("/favicon.ico"), e o 404 nao
 // acontece. Aqui o comportamento espelha o deploy/nginx.conf — so "/" devolve o
 // index, qualquer outra rota cai em 404 de verdade.
 //
@@ -20,6 +20,12 @@ const TYPES = {
   '.html': 'text/html; charset=utf-8',
   '.webp': 'image/webp',
   '.svg': 'image/svg+xml',
+  // O cartao de compartilhamento e os icones. Sem estas linhas eles saiam como
+  // application/octet-stream aqui — o nginx acerta pelo mime.types, mas entao o
+  // dev nao serviria para testar previa de link nem favicon, que e metade do
+  // motivo de este servidor existir.
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
   '.xml': 'application/xml; charset=utf-8',
   '.txt': 'text/plain; charset=utf-8',
   '.webmanifest': 'application/manifest+json',
