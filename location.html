@@ -1,0 +1,137 @@
+<!--
+  Template das paginas de cidade (/bonito, /ponta-pora). E so o <main>: o
+  doctype, o <head>, o cabecalho e o rodape vem do build, que reaproveita deste
+  mesmo projeto os blocos "shell" recortados do site.html — assim o menu e o
+  rodape nunca saem do lugar entre uma pagina e outra.
+
+  Fica num arquivo proprio, e nao numa template string dentro do build.mjs, pelo
+  mesmo motivo que o site.html existe: layout e marcacao moram em HTML, onde dao
+  para ser lidos e editados. (A /privacidade e a excecao, porque la quase tudo e
+  gerado a partir do texto juridico no site-data.)
+
+  Marcadores __LOC_*__ e __ADDRESS_*__ sao resolvidos pelo build com os dados
+  DAQUELE consultorio; o texto editorial vem de `locations[].page` no site-data.
+
+  CUIDADO ao comentar aqui: a sequencia de fechamento de comentario HTML dentro
+  de um comentario o encerra ali mesmo, e o resto do texto vaza como conteudo
+  visivel no topo das duas paginas. Ja aconteceu.
+-->
+<main class="cityPage" id="conteudo" tabindex="-1">
+
+<!-- A trilha de navegacao e o unico caminho de volta para a home que aparece
+     acima da dobra. Ela tambem e o que rende "Início > Consultório em Bonito-MS"
+     no resultado de busca, em vez da URL crua (o BreadcrumbList do JSON-LD
+     descreve exatamente esta trilha). -->
+<nav class="cityCrumb" aria-label="Trilha de navegação"><a href="/">Início</a><span aria-hidden="true">/</span><b>Consultório em __LOC_LABEL__</b></nav>
+
+<header class="cityHero">
+  <div class="cityHeroText" data-reveal>
+    <p class="eyebrow">CONSULTÓRIO EM __LOC_LABEL__</p>
+    <h1>__LOC_H1__</h1>
+    <p class="lead">__LOC_LEAD__</p>
+    <div class="actions">
+      <a href="__WHATSAPP_URL__" target="_blank" rel="noopener" class="primary">Agendar pelo WhatsApp <span aria-hidden="true">&rarr;</span></a>
+      <a href="#como-chegar" class="secondary">Ver como chegar</a>
+    </div>
+    <ul class="trust"><li>Consulta com hora marcada</li><li>Atendimento humanizado</li><li>__LOC_LANDMARK__</li></ul>
+  </div>
+  <div class="cityHeroArt" data-reveal><div class="arch photoArch"><img __LOC_PHOTO__ alt="Dra. Claudia Maciel, ginecologista e obstetra em __LOC_LABEL__" fetchpriority="high" decoding="async"></div></div>
+</header>
+
+<!-- NAP visivel e logo abaixo do H1 de proposito: endereco, horario e telefone
+     sao o que a visitante veio buscar numa pagina de unidade, e sao os mesmos
+     tres dados que o Google cruza com o Google Business Profile. -->
+<section class="cityFacts" aria-label="Dados do consultório de __LOC_LABEL__">
+  <address data-reveal>
+    <a href="__MAP_URL__" target="_blank" rel="noopener"><span aria-hidden="true">⌂</span><b>Endereço</b><span>__ADDRESS_STREET__<br>__ADDRESS_CITY__</span></a>
+    <span><span aria-hidden="true">◷</span><b>Horário</b><span>__HOURS_TEXT__</span></span>
+    <a href="tel:__PHONE_E164__"><span aria-hidden="true">✆</span><b>Telefone e WhatsApp</b><span>__PHONE_DISPLAY__</span></a>
+  </address>
+</section>
+
+<section class="cityAbout" id="atendimento" aria-labelledby="atendimentoT">
+  <div data-reveal>
+    <p class="sectionLabel">O ATENDIMENTO EM __LOC_LABEL__</p>
+    <h2 id="atendimentoT">Como é a consulta<br><em>neste consultório.</em></h2>
+  </div>
+  <div class="cityAboutText" data-reveal>__LOC_ABOUT__
+    <p class="cityServicesIntro">Os cuidados oferecidos em __LOC_CITY__:</p>
+    <ul class="cityServices">__LOC_SERVICES__</ul>
+  </div>
+</section>
+
+<!-- Quem atende. Um resumo, nao a biografia inteira: o texto completo mora na
+     home (/#sobre e /#formacao), e repeti-lo aqui seria conteudo duplicado
+     competindo com a propria home. Os links levam para la. -->
+<section class="cityDoctor" aria-labelledby="medicaT">
+  <div class="cityDoctorPhoto" data-reveal><img __CLAUDIA_RETRATO__ alt="Retrato da Dra. Claudia Maciel, médica ginecologista e obstetra" loading="lazy" decoding="async"></div>
+  <div data-reveal>
+    <p class="sectionLabel">QUEM ATENDE</p>
+    <h2 id="medicaT">Dra. Claudia Maciel</h2>
+    <p class="cityDoctorCrm">__CRM_PLAIN__</p>
+    <p>Médica ginecologista e obstetra, com atendimento em __CITIES_LABEL__. A consulta parte de uma conversa: entender o que mudou, o que incomoda e o que faz sentido para aquela fase da vida, antes de qualquer conduta.</p>
+    <p class="cityDoctorLinks"><a class="textLink" href="/#sobre">Sobre a médica</a> <a class="textLink" href="/#formacao">Formação e registros</a></p>
+  </div>
+</section>
+
+<section class="location cityMap" id="como-chegar" aria-labelledby="comoChegarT">
+  <div class="sectionHead" data-reveal>
+    <div><p class="eyebrow">COMO CHEGAR</p><h2 id="comoChegarT">O consultório fica no<br><em>Centro de __LOC_LABEL__.</em></h2></div>
+    <p>Abra o mapa para ver o ponto exato do consultório e traçar a rota a partir de onde você está.</p>
+  </div>
+  <div class="mapLayout">
+    <div class="mapCanvas" id="mapCanvas" data-src="__MAP_EMBED__" data-title="Mapa do consultório da Dra. Claudia Maciel, em __LOC_LABEL__" data-reveal>
+      <button type="button" class="mapFacade" id="mapLoad" aria-describedby="mapNote">
+        <svg class="mapArt" viewBox="0 0 880 520" preserveAspectRatio="xMidYMid slice" aria-hidden="true" focusable="false"><rect width="880" height="520" fill="#e3cdc9"/><g fill="#d5b7b2"><rect x="283" y="12" width="274" height="122" rx="8"/><rect x="743" y="12" width="125" height="122" rx="8"/><rect x="137" y="185" width="96" height="76" rx="8"/><rect x="443" y="391" width="114" height="115" rx="8"/><rect x="14" y="295" width="88" height="46" rx="8"/><rect x="283" y="295" width="134" height="46" rx="8"/><rect x="607" y="391" width="102" height="115" rx="8"/></g><rect x="607" y="185" width="102" height="76" rx="10" fill="#cbd8c6"/><g stroke="#fdfaf7" fill="none" stroke-linecap="round"><path d="M-10 160H890" stroke-width="30"/><path d="M-10 366H890" stroke-width="30"/><path d="M258-10V530" stroke-width="30"/><path d="M582-10V530" stroke-width="30"/><path d="M-10 278H890" stroke-width="14"/><path d="M120-10V530" stroke-width="14"/><path d="M430 160V530" stroke-width="14"/><path d="M726-10V530" stroke-width="14"/><path d="M-10 500L890 300" stroke-width="18"/></g><g transform="translate(430,278)"><circle class="mapHalo" r="52" fill="#682c42" opacity=".16"/><ellipse cx="0" cy="26" rx="17" ry="4.5" fill="#4b1e30" opacity=".22"/><circle cx="0" cy="-16" r="21" fill="#682c42"/><path d="M-11.5-3 0 22 11.5-3Z" fill="#682c42"/><circle cx="0" cy="-16" r="7.5" fill="#fbf8f3"/></g></svg>
+        <span class="mapCta"><b>Ver o mapa interativo <span aria-hidden="true">&rarr;</span></b><small>__ADDRESS_STREET__ &mdash; __ADDRESS_CITY__</small></span>
+      </button>
+    </div>
+    <aside class="mapCard" data-reveal>
+      <h3>O consultório</h3>
+      <ul class="mapFacts">
+        <li><span aria-hidden="true">⌂</span><div><b>Endereço</b><p>__ADDRESS_STREET__<br>__ADDRESS_CITY__</p></div></li>
+        <li><span aria-hidden="true">◷</span><div><b>Horário de atendimento</b><p>__HOURS_TEXT__</p></div></li>
+        <li><span aria-hidden="true">✆</span><div><b>Telefone e WhatsApp</b><p><a href="tel:__PHONE_E164__">__PHONE_DISPLAY__</a></p></div></li>
+      </ul>
+      <div class="mapActions">
+        <a class="mapGo" href="__MAP_DIRECTIONS__" target="_blank" rel="noopener">Como chegar <span aria-hidden="true">&#8599;</span></a>
+        <a class="mapAlt" href="__WAZE_URL__" target="_blank" rel="noopener">Abrir no Waze <span aria-hidden="true">&#8599;</span></a>
+      </div>
+    </aside>
+  </div>
+  <p class="mapNote" id="mapNote">O mapa vem do Google Maps e só é carregado depois do seu clique &mdash; até lá, esta página não faz nenhuma requisição ao Google por causa dele. Se preferir não abri-lo aqui, use o botão &ldquo;Como chegar&rdquo;. Os detalhes estão na <a href="__PRIVACY_PATH__">__PRIVACY_LABEL__</a>.</p>
+</section>
+
+<section class="cityFaq" aria-labelledby="duvidasT">
+  <div data-reveal><p class="sectionLabel">DÚVIDAS SOBRE ESTE CONSULTÓRIO</p><h2 id="duvidasT">Perguntas de quem vai<br><em>consultar em __LOC_CITY__.</em></h2><p class="cityFaqMore">Dúvidas sobre a consulta em si estão nas <a href="/#duvidas">perguntas frequentes</a>.</p></div>
+  <div class="cityFaqList" data-reveal>__LOC_FAQ__</div>
+</section>
+
+<section class="contact" id="contato">
+  <div data-reveal>
+    <p class="eyebrow">AGENDE SEU MOMENTO DE CUIDADO</p>
+    <h2>Consulta em __LOC_CITY__,<br>no seu <em>tempo.</em></h2>
+    <p class="contactLead">O primeiro passo pode ser uma conversa. Chame no WhatsApp e combine o melhor horário no consultório de __LOC_LABEL__.</p>
+    <a class="whiteBtn" href="__WHATSAPP_URL__" target="_blank" rel="noopener">Conversar pelo WhatsApp <span aria-hidden="true">&rarr;</span></a>
+    <address class="contactDetails">
+      <a href="tel:__PHONE_E164__"><b>Telefone e WhatsApp:</b> __PHONE_DISPLAY__</a>
+      <a href="__MAP_URL__" target="_blank" rel="noopener"><b>Consultório:</b> __ADDRESS_STREET__ &mdash; __ADDRESS_CITY__ <span aria-hidden="true">&#8599;</span></a>
+    </address>
+    <div class="areaServed"><p>Atendimento a pacientes de __LOC_CITY__ e região:</p><ul>__AREA_SERVED__</ul></div>
+  </div>
+  <p class="contactMark" aria-hidden="true" data-reveal><img __LOGO_MARK__ alt="" decoding="async" loading="lazy"><span>Saúde da mulher em cada fase.</span></p>
+</section>
+
+<!-- Link para a outra unidade. Existe por dois motivos: a paciente que caiu na
+     cidade errada tem para onde ir, e as duas paginas de cidade ficam ligadas
+     entre si no grafo do site, em vez de penduradas so na home. -->
+<aside class="cityOther" data-reveal>__LOC_OTHER__</aside>
+
+</main>
+
+<!-- Carrega o mapa do Google so no clique (ver o comentario da secao do mapa,
+     acima). O innerHTML='' descarta a fachada inteira, botao incluso: depois de
+     aberto o mapa nao volta atras, e um botao que continuasse ali recriaria um
+     segundo iframe a cada clique. O titulo do iframe vem do data-title porque
+     ele nomeia a CIDADE, e cada pagina tem a sua. -->
+<script>(function(){var box=document.getElementById('mapCanvas'),btn=document.getElementById('mapLoad');if(!box||!btn)return;btn.addEventListener('click',function(){var f=document.createElement('iframe');f.src=box.dataset.src;f.title=box.dataset.title;f.loading='lazy';f.allowFullscreen=true;f.referrerPolicy='no-referrer-when-downgrade';box.innerHTML='';box.appendChild(f);box.classList.add('isLoaded')})})();</script>

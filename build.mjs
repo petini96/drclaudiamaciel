@@ -1,4 +1,4 @@
-﻿import { mkdir, readFile, writeFile, stat, rm, copyFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, stat, rm, copyFile } from 'node:fs/promises';
 import { gzipSync } from 'node:zlib';
 import { site } from './src/site-data.js';
 
@@ -73,11 +73,16 @@ function jpegSize(buf) {
 // Ficam fora do HTML (em vez de base64) por tres motivos de SEO: o Google
 // Images so indexa URLs reais, og:image/Twitter exigem URL absoluta, e o HTML
 // cai de ~240 KB para ~40 KB, o que adianta o First Contentful Paint.
+// `path` sai ABSOLUTO (/assets/...), e nao relativo. Com a home sozinha o
+// relativo funcionava e ainda permitia abrir o dist/index.html direto no
+// navegador; com /bonito e /ponta-pora, um `assets/foto.webp` relativo viraria
+// `/bonito/assets/foto.webp` e daria 404 em todas as fotos das paginas de
+// cidade — inclusive na do preload, que e a LCP.
 const images = {};
 for (const name of imageNames) {
   const bytes = await readFile(`assets/${name}.webp`);
   const { w, h } = webpSize(bytes);
-  images[name] = { path: `assets/${name}.webp`, url: `${siteUrl}/assets/${name}.webp`, w, h };
+  images[name] = { path: `/assets/${name}.webp`, url: `${siteUrl}/assets/${name}.webp`, w, h };
 }
 
 // --- ativos de marca --------------------------------------------------------
@@ -126,44 +131,146 @@ const faqList = site.faq
   )
   .join('');
 
-// --- dados estruturados (JSON-LD) ------------------------------------------
-const { address: addr, geo, phone } = site.business;
-const fullAddress = `${addr.street} — ${addr.district}, ${addr.city}-${addr.stateCode}`;
-
-// O endereco como texto de busca alimenta os QUATRO destinos de mapa da pagina.
-// Sai de uma variavel so de proposito: e o endereco, e nao a coordenada, que o
-// Google geocodifica com precisao aqui — `business.geo` ainda esta marcado
-// [CONFERIR] no site-data, e um mapa com o pino no lugar errado e pior do que
-// mapa nenhum numa pagina de consultorio.
-const addressQuery = `${addr.street}, ${addr.district}, ${addr.city}, ${addr.stateCode}`;
-const mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addressQuery)}`;
-const mapDirections = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(addressQuery)}`;
-const wazeUrl = `https://waze.com/ul?q=${encodeURIComponent(addressQuery)}&navigate=yes`;
-// `output=embed` e a forma de embutir o Google Maps sem chave de API. O iframe
-// NAO vai no HTML entregue: ele so e criado quando a visitante clica no mapa
-// (ver a secao #localizacao no site.html). Motivo: um iframe do Google no HTML
-// inicial faria uma requisicao a terceiro — com cookies — antes de qualquer
-// consentimento, o que contradiz o modelo do resto do site (ver o bloco do
-// Consent Mode mais abaixo) e a propria politica de privacidade. De quebra,
-// evita ~700 KB de JS de terceiro concorrendo com o carregamento da pagina.
-const mapEmbed = `https://www.google.com/maps?q=${encodeURIComponent(addressQuery)}&z=17&hl=pt-BR&output=embed`;
+// --- consultorios -----------------------------------------------------------
+const { phone } = site.practice;
 const hero = images[site.seo.heroImage];
+
+// Horario legivel, derivado do MESMO array que alimenta o
+// openingHoursSpecification — o Google compara os dois e penaliza divergencia.
+const DAY_PT = { Monday: 'segunda', Tuesday: 'terça', Wednesday: 'quarta', Thursday: 'quinta', Friday: 'sexta', Saturday: 'sábado', Sunday: 'domingo' };
+const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+const hhmm = (t) => (t.endsWith(':00') ? `${Number(t.slice(0, 2))}h` : `${Number(t.slice(0, 2))}h${t.slice(3)}`);
+
+function humanHours(spec) {
+  if (!spec.length) return '';
+  const groups = new Map();
+  for (const h of spec) {
+    const key = h.days.join(',');
+    if (!groups.has(key)) groups.set(key, { days: h.days, ranges: [] });
+    groups.get(key).ranges.push(`${hhmm(h.opens)}–${hhmm(h.closes)}`);
+  }
+  return [...groups.values()]
+    .map(({ days, ranges }) => {
+      const label =
+        days.length === 5 && WEEKDAYS.every((d) => days.includes(d))
+          ? 'Segunda a sexta'
+          : days.map((d) => DAY_PT[d]).join(', ').replace(/^./, (c) => c.toUpperCase());
+      return `${label}, ${ranges.join(' e ')}`;
+    })
+    .join('; ');
+}
+
+/**
+ * Enriquece cada consultorio do site-data com o que o build precisa repetir em
+ * varios lugares: URL da pagina, endereco por extenso, horario legivel e os
+ * quatro destinos de mapa.
+ *
+ * Tudo derivado, nada escrito a mao: endereco e horario aparecem no texto da
+ * pagina, no cartao do mapa, no rodape, no FAQ e no JSON-LD. Copiar qualquer um
+ * deles a mao e o caminho mais curto para o NAP divergir entre o site e o
+ * Google Business Profile — que e justamente o par que o Google compara em
+ * busca local.
+ */
+const locations = site.locations.map((loc) => {
+  const a = loc.address;
+  const full = `${a.street} — ${a.district}, ${a.city}-${a.stateCode}`;
+  // O endereco como TEXTO DE BUSCA alimenta os quatro destinos de mapa. Sai
+  // daqui de proposito: e o endereco, e nao a coordenada, que o Google
+  // geocodifica com precisao — `geo` ainda esta marcado [CONFERIR] nos dois
+  // consultorios, e um mapa com o pino no lugar errado e pior do que mapa
+  // nenhum numa pagina de consultorio.
+  const query = `${a.street}, ${a.district}, ${a.city}, ${a.stateCode}`;
+  const q = encodeURIComponent(query);
+  return {
+    ...loc,
+    path: `/${loc.slug}`,
+    url: `${siteUrl}/${loc.slug}`,
+    id: `${siteUrl}/#${loc.slug}`,
+    fullAddress: full,
+    shortAddress: `${a.street}, ${a.district} — ${a.city}-${a.stateCode}`,
+    hoursText: humanHours(loc.openingHours),
+    mapUrl: `https://www.google.com/maps/search/?api=1&query=${q}`,
+    mapDirections: `https://www.google.com/maps/dir/?api=1&destination=${q}`,
+    wazeUrl: `https://waze.com/ul?q=${q}&navigate=yes`,
+    // `output=embed` e a forma de embutir o Google Maps sem chave de API. O
+    // iframe NAO vai no HTML entregue: ele so e criado quando a visitante clica
+    // no mapa (ver a secao do mapa em location.html). Motivo: um iframe do
+    // Google no HTML inicial faria uma requisicao a terceiro — com cookies —
+    // antes de qualquer consentimento, o que contradiz o modelo do resto do
+    // site (ver o bloco do Consent Mode mais abaixo) e a propria politica de
+    // privacidade. De quebra, evita ~700 KB de JS de terceiro concorrendo com o
+    // carregamento da pagina.
+    mapEmbed: `https://www.google.com/maps?q=${q}&z=17&hl=pt-BR&output=embed`,
+  };
+});
+
+if (!locations.length) throw new Error('src/site-data.js: `locations` esta vazio — o site precisa de pelo menos um consultorio.');
+const slugs = locations.map((l) => l.slug);
+if (new Set(slugs).size !== slugs.length) throw new Error(`src/site-data.js: slug repetido em \`locations\` (${slugs.join(', ')}).`);
+// O slug vira rota. Se colidir com uma rota que o build ja gera, a pagina da
+// cidade sobrescreveria a outra em dist/ — em silencio.
+const reserved = ['privacidade', 'assets', 'index', '404'];
+for (const l of locations) {
+  if (reserved.includes(l.slug)) throw new Error(`src/site-data.js: slug "${l.slug}" colide com uma rota reservada (${reserved.join(', ')}).`);
+  if (!/^[a-z0-9-]+$/.test(l.slug)) throw new Error(`src/site-data.js: slug "${l.slug}" invalido (use so minusculas, numeros e hifen).`);
+}
+
+// O nginx precisa de um `location =` por rota (o porque esta no proprio
+// nginx.conf). Acrescentar um consultorio no site-data e esquecer a linha la
+// nao quebra nada de forma visivel: a URL passa a responder 301 para /<slug>/,
+// enquanto o canonical e o sitemap continuam apontando para a versao sem barra.
+// O Google entao rastreia uma URL e encontra outra — o tipo de erro que so
+// aparece semanas depois, no Search Console. Falhar aqui e barato.
+const nginxConf = await readFile('deploy/nginx.conf', 'utf8');
+for (const l of locations) {
+  if (!new RegExp(`location\\s*=\\s*${l.path}\\s*\\{`).test(nginxConf)) {
+    throw new Error(
+      `deploy/nginx.conf: falta o bloco da rota ${l.path}. Acrescente, junto dos outros:\n` +
+        `    location = ${l.path} {\n        try_files ${l.path}/index.html =404;\n    }`,
+    );
+  }
+}
+
+// Lista das cidades por extenso, para os textos que falam dos dois consultorios
+// sem precisar saber quantos sao: "Bonito e Ponta Porã", "A, B e C".
+const cityList = (items) =>
+  items.length < 2 ? items.join('') : `${items.slice(0, -1).join(', ')} e ${items[items.length - 1]}`;
+const citiesText = cityList(locations.map((l) => l.city));
+const citiesLabel = cityList(locations.map((l) => l.label));
 
 // --- interpolacao de texto --------------------------------------------------
 // Marcadores usados no site-data.js ({crm}, {endereco}...). Existem para que
-// nenhum texto editorial repita um dado de negocio a mao: telefone, endereco e
-// registro aparecem em varios lugares da pagina, e a copia manual e o caminho
-// mais curto para o NAP divergir entre o site, o JSON-LD e o Google Business —
-// que e justamente o par que o Google compara em busca local.
-const textVars = {
+// nenhum texto editorial repita um dado de negocio a mao — mesmo motivo do
+// bloco acima.
+//
+// `{endereco}`, `{cidade}` e `{horario}` dependem de QUAL consultorio: numa
+// pagina de cidade eles valem os dados daquela unidade. Por isso `fillText`
+// recebe o consultorio como contexto; sem ele, os marcadores de unidade nao
+// existem e um texto que os use falha na validacao de placeholders no fim do
+// build, em vez de sair pela metade na pagina.
+const baseVars = {
   '{telefone}': esc(phone.display),
-  '{endereco}': esc(fullAddress),
   '{site}': esc(siteUrl.replace(/^https?:\/\//, '')),
   '{crm}': esc(site.doctor.crm),
   '{rqe}': esc(site.doctor.rqe),
+  '{cidades}': esc(citiesText),
+  '{enderecos}': esc(locations.map((l) => l.shortAddress).join('; ')),
 };
-/** Escapa o texto e resolve os marcadores acima. */
-const fillText = (s) => Object.entries(textVars).reduce((acc, [k, v]) => acc.split(k).join(v), esc(s));
+
+/** Escapa o texto e resolve os marcadores. `loc` liga os marcadores de unidade. */
+const fillText = (s, loc) => {
+  const vars = loc
+    ? {
+        ...baseVars,
+        '{endereco}': esc(loc.fullAddress),
+        '{cidade}': esc(loc.label),
+        // Sem horario confirmado o texto continua verdadeiro em vez de sair
+        // vazio — ver o comentario de `openingHours` no site-data.
+        '{horario}': esc(loc.hoursText || 'confirmado pelo WhatsApp'),
+      }
+    : baseVars;
+  return Object.entries(vars).reduce((acc, [k, v]) => acc.split(k).join(v), esc(s));
+};
 
 // --- manchete "escrita" -----------------------------------------------------
 /**
@@ -299,33 +406,6 @@ const testimonialCards = tst.items
   )
   .join('');
 
-// Horario legivel para a pagina, derivado do MESMO array que alimenta o
-// openingHoursSpecification — o Google compara os dois e penaliza divergencia.
-const DAY_PT = { Monday: 'segunda', Tuesday: 'terça', Wednesday: 'quarta', Thursday: 'quinta', Friday: 'sexta', Saturday: 'sábado', Sunday: 'domingo' };
-const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
-const hhmm = (t) => (t.endsWith(':00') ? `${Number(t.slice(0, 2))}h` : `${Number(t.slice(0, 2))}h${t.slice(3)}`);
-
-function humanHours(spec) {
-  if (!spec.length) return '';
-  const groups = new Map();
-  for (const h of spec) {
-    const key = h.days.join(',');
-    if (!groups.has(key)) groups.set(key, { days: h.days, ranges: [] });
-    groups.get(key).ranges.push(`${hhmm(h.opens)}–${hhmm(h.closes)}`);
-  }
-  return [...groups.values()]
-    .map(({ days, ranges }) => {
-      const label =
-        days.length === 5 && WEEKDAYS.every((d) => days.includes(d))
-          ? 'Segunda a sexta'
-          : days.map((d) => DAY_PT[d]).join(', ').replace(/^./, (c) => c.toUpperCase());
-      return `${label}, ${ranges.join(' e ')}`;
-    })
-    .join('; ');
-}
-
-const hoursText = humanHours(site.business.openingHours);
-
 const doctorIds = [];
 if (site.doctor.crm) doctorIds.push({ '@type': 'PropertyValue', name: 'CRM', value: site.doctor.crm });
 if (site.doctor.rqe) doctorIds.push({ '@type': 'PropertyValue', name: 'RQE', value: site.doctor.rqe });
@@ -342,7 +422,7 @@ if (site.doctor.crm) {
     credentialCategory: 'Registro profissional',
     recognizedBy: {
       '@type': 'GovernmentOrganization',
-      name: `Conselho Regional de Medicina do estado de ${addr.state} (CRM-${addr.stateCode})`,
+      name: `Conselho Regional de Medicina do estado de ${locations[0].address.state} (CRM-${locations[0].address.stateCode})`,
     },
   });
 }
@@ -355,107 +435,179 @@ if (site.doctor.rqe) {
   });
 }
 
-const postalAddress = {
+/** PostalAddress de um consultorio. `postalCode` vazio e omitido, nao vazio. */
+const postalAddress = (a) => ({
   '@type': 'PostalAddress',
-  streetAddress: addr.street,
-  addressLocality: addr.city,
-  addressRegion: addr.stateCode,
-  postalCode: addr.postalCode,
-  addressCountry: addr.country,
-};
+  streetAddress: a.street,
+  addressLocality: a.city,
+  addressRegion: a.stateCode,
+  ...(a.postalCode ? { postalCode: a.postalCode } : {}),
+  addressCountry: a.country,
+});
 
+const whatsappUrl = `https://wa.me/${phone.e164.replace('+', '')}`;
+
+// --- nos do grafo -----------------------------------------------------------
+// Sao funcoes, e nao constantes, porque o MESMO no precisa aparecer em varias
+// paginas: a home declara os dois consultorios, e cada pagina de cidade declara
+// o seu. Repetir o no em cada pagina e o correto — o Google le uma pagina por
+// vez, e um `@id` apontando para um no que so existe em outra URL nao resolve.
+
+/** A clinica no nivel da marca: sem endereco, porque ela tem dois. */
+const practiceNode = () => ({
+  '@type': ['MedicalOrganization', 'Organization'],
+  '@id': `${siteUrl}/#practice`,
+  name: site.practice.name,
+  alternateName: [site.practice.shortName, site.doctor.legalName],
+  url: `${siteUrl}/`,
+  description: site.seo.description,
+  // `image` e a foto da medica (o que ilustra a entidade); `logo` e o logotipo.
+  // Sao campos diferentes de proposito: o Google usa o `logo` para representar
+  // a marca no Knowledge Panel, e uma fotografia ali sai cortada e sem leitura.
+  logo: brand.logo.url,
+  image: { '@id': `${siteUrl}/#primaryimage` },
+  telephone: phone.e164,
+  medicalSpecialty: ['Obstetric', 'Gynecologic'],
+  knowsLanguage: site.locale,
+  sameAs: site.doctor.profiles,
+  // E o que diz ao Google que as duas unidades sao a MESMA clinica, e nao dois
+  // negocios homonimos disputando a mesma marca.
+  department: locations.map((l) => ({ '@id': l.id })),
+  employee: { '@id': `${siteUrl}/#physician` },
+});
+
+/**
+ * Um consultorio. `Physician` + `MedicalClinic` + `LocalBusiness` e a mesma
+ * combinacao que a versao de uma cidade so usava: `Physician` descreve o tipo
+ * de servico, `LocalBusiness` e o que habilita os resultados de mapa.
+ */
+const locationNode = (loc) => ({
+  '@type': ['Physician', 'MedicalClinic', 'LocalBusiness'],
+  '@id': loc.id,
+  name: `${site.practice.name} — ${loc.city}`,
+  alternateName: `${site.practice.shortName} em ${loc.label}`,
+  url: loc.url,
+  description: fillText(loc.page.description, loc),
+  branchOf: { '@id': `${siteUrl}/#practice` },
+  parentOrganization: { '@id': `${siteUrl}/#practice` },
+  logo: brand.logo.url,
+  image: { '@id': `${siteUrl}/#primaryimage` },
+  telephone: phone.e164,
+  address: postalAddress(loc.address),
+  ...(loc.geo ? { geo: { '@type': 'GeoCoordinates', latitude: loc.geo.lat, longitude: loc.geo.lng } } : {}),
+  hasMap: loc.mapUrl,
+  medicalSpecialty: ['Obstetric', 'Gynecologic'],
+  knowsLanguage: site.locale,
+  areaServed: loc.areaServed.map((c) => ({
+    '@type': 'City',
+    name: c,
+    address: { '@type': 'PostalAddress', addressRegion: loc.address.stateCode, addressCountry: loc.address.country },
+  })),
+  availableService: site.services.map((s) => ({
+    '@type': 'MedicalProcedure',
+    name: s.name,
+    description: s.description,
+  })),
+  // Sem horario confirmado o campo SOME, em vez de sair vazio ou inventado:
+  // horario divergente do Google Business Profile prejudica a unidade na busca
+  // local mais do que a ausencia dele (ver `openingHours` no site-data).
+  ...(loc.openingHours.length
+    ? {
+        openingHoursSpecification: loc.openingHours.map((h) => ({
+          '@type': 'OpeningHoursSpecification',
+          dayOfWeek: h.days,
+          opens: h.opens,
+          closes: h.closes,
+        })),
+      }
+    : {}),
+  employee: { '@id': `${siteUrl}/#physician` },
+  potentialAction: {
+    '@type': 'ReserveAction',
+    name: `Agendar consulta em ${loc.city}`,
+    target: {
+      '@type': 'EntryPoint',
+      urlTemplate: whatsappUrl,
+      inLanguage: site.locale,
+      actionPlatform: ['https://schema.org/DesktopWebPlatform', 'https://schema.org/MobileWebPlatform'],
+    },
+  },
+});
+
+const physicianNode = () => ({
+  '@type': 'Person',
+  '@id': `${siteUrl}/#physician`,
+  name: site.doctor.fullName,
+  // O nome de registro aparece nos diretorios medicos; declara-lo aqui liga
+  // este site aos perfis do Doctoralia/agenda.app.br na mesma entidade.
+  alternateName: site.doctor.legalName,
+  givenName: site.doctor.name.split(' ')[0],
+  honorificPrefix: site.doctor.honorificPrefix,
+  jobTitle: site.doctor.jobTitle,
+  url: `${siteUrl}/#sobre`,
+  image: images['claudia-retrato'].url,
+  worksFor: { '@id': `${siteUrl}/#practice` },
+  // As DUAS unidades. E o que sustenta "a mesma medica atende nas duas
+  // cidades" no grafo, em vez de deixar o Google deduzir.
+  workLocation: locations.map((l) => ({ '@id': l.id })),
+  telephone: phone.e164,
+  sameAs: site.doctor.profiles,
+  knowsAbout: site.services.map((s) => s.name),
+  ...(doctorIds.length ? { identifier: doctorIds } : {}),
+  ...(doctorCredentials.length ? { hasCredential: doctorCredentials } : {}),
+});
+
+const websiteNode = () => ({
+  '@type': 'WebSite',
+  '@id': `${siteUrl}/#website`,
+  url: `${siteUrl}/`,
+  name: site.practice.name,
+  inLanguage: site.locale,
+  publisher: { '@id': `${siteUrl}/#practice` },
+});
+
+const primaryImageNode = () => ({
+  '@type': 'ImageObject',
+  '@id': `${siteUrl}/#primaryimage`,
+  url: hero.url,
+  contentUrl: hero.url,
+  width: hero.w,
+  height: hero.h,
+  caption: `${site.doctor.fullName}, ${site.doctor.jobTitle.toLowerCase()} em ${citiesLabel}`,
+});
+
+/** FAQPage de uma pagina. Cada URL tem as SUAS perguntas — repetir as mesmas em
+ *  paginas diferentes e conteudo duplicado, e o Google escolhe uma so. */
+const faqNode = (pageId, items) => ({
+  '@type': 'FAQPage',
+  '@id': `${pageId}#faq`,
+  inLanguage: site.locale,
+  isPartOf: { '@id': `${pageId}#webpage` },
+  mainEntity: items.map((f) => ({
+    '@type': 'Question',
+    name: f.q,
+    acceptedAnswer: { '@type': 'Answer', text: f.a },
+  })),
+});
+
+const breadcrumbNode = (pageId, trail) => ({
+  '@type': 'BreadcrumbList',
+  '@id': `${pageId}#breadcrumb`,
+  itemListElement: trail.map((t, i) => ({ '@type': 'ListItem', position: i + 1, name: t.name, item: t.url })),
+});
+
+// --- grafo da home ----------------------------------------------------------
+// A home declara os DOIS consultorios. E o que faz o Google entender que a
+// entidade "Dra. Claudia Maciel" tem duas unidades, mesmo que a visitante nunca
+// chegue a abrir /bonito ou /ponta-pora.
 const jsonLd = {
   '@context': 'https://schema.org',
   '@graph': [
-    {
-      '@type': 'WebSite',
-      '@id': `${siteUrl}/#website`,
-      url: `${siteUrl}/`,
-      name: site.business.name,
-      inLanguage: site.locale,
-      publisher: { '@id': `${siteUrl}/#practice` },
-    },
-    {
-      '@type': ['Physician', 'MedicalClinic', 'LocalBusiness'],
-      '@id': `${siteUrl}/#practice`,
-      name: site.business.name,
-      alternateName: [site.business.shortName, site.doctor.legalName],
-      url: `${siteUrl}/`,
-      description: site.seo.description,
-      image: { '@id': `${siteUrl}/#primaryimage` },
-      // `image` e a foto da medica (o que ilustra a entidade); `logo` e o
-      // logotipo. Sao campos diferentes de proposito: o Google usa o `logo`
-      // para representar a marca no Knowledge Panel, e uma fotografia ali sai
-      // cortada e sem leitura.
-      logo: brand.logo.url,
-      telephone: phone.e164,
-      address: postalAddress,
-      geo: { '@type': 'GeoCoordinates', latitude: geo.lat, longitude: geo.lng },
-      hasMap: mapUrl,
-      medicalSpecialty: ['Obstetric', 'Gynecologic'],
-      knowsLanguage: site.locale,
-      sameAs: site.doctor.profiles,
-      areaServed: site.business.areaServed.map((c) => ({
-        '@type': 'City',
-        name: c,
-        address: { '@type': 'PostalAddress', addressRegion: addr.stateCode, addressCountry: addr.country },
-      })),
-      availableService: site.services.map((s) => ({
-        '@type': 'MedicalProcedure',
-        name: s.name,
-        description: s.description,
-      })),
-      ...(site.business.openingHours.length
-        ? {
-            openingHoursSpecification: site.business.openingHours.map((h) => ({
-              '@type': 'OpeningHoursSpecification',
-              dayOfWeek: h.days,
-              opens: h.opens,
-              closes: h.closes,
-            })),
-          }
-        : {}),
-      employee: { '@id': `${siteUrl}/#physician` },
-      potentialAction: {
-        '@type': 'ReserveAction',
-        name: 'Agendar consulta',
-        target: {
-          '@type': 'EntryPoint',
-          urlTemplate: `https://wa.me/${phone.e164.replace('+', '')}`,
-          inLanguage: site.locale,
-          actionPlatform: ['https://schema.org/DesktopWebPlatform', 'https://schema.org/MobileWebPlatform'],
-        },
-      },
-    },
-    {
-      '@type': 'Person',
-      '@id': `${siteUrl}/#physician`,
-      name: site.doctor.fullName,
-      // O nome de registro aparece nos diretorios medicos; declara-lo aqui liga
-      // este site aos perfis do Doctoralia/agenda.app.br na mesma entidade.
-      alternateName: site.doctor.legalName,
-      givenName: site.doctor.name.split(' ')[0],
-      honorificPrefix: site.doctor.honorificPrefix,
-      jobTitle: site.doctor.jobTitle,
-      url: `${siteUrl}/#sobre`,
-      image: images['claudia-retrato'].url,
-      worksFor: { '@id': `${siteUrl}/#practice` },
-      workLocation: postalAddress,
-      telephone: phone.e164,
-      sameAs: site.doctor.profiles,
-      knowsAbout: site.services.map((s) => s.name),
-      ...(doctorIds.length ? { identifier: doctorIds } : {}),
-      ...(doctorCredentials.length ? { hasCredential: doctorCredentials } : {}),
-    },
-    {
-      '@type': 'ImageObject',
-      '@id': `${siteUrl}/#primaryimage`,
-      url: hero.url,
-      contentUrl: hero.url,
-      width: hero.w,
-      height: hero.h,
-      caption: `${site.doctor.fullName}, ${site.doctor.jobTitle.toLowerCase()} em ${addr.city}-${addr.stateCode}`,
-    },
+    websiteNode(),
+    practiceNode(),
+    ...locations.map(locationNode),
+    physicianNode(),
+    primaryImageNode(),
     {
       '@type': 'WebPage',
       '@id': `${siteUrl}/#webpage`,
@@ -468,22 +620,8 @@ const jsonLd = {
       inLanguage: site.locale,
       breadcrumb: { '@id': `${siteUrl}/#breadcrumb` },
     },
-    {
-      '@type': 'BreadcrumbList',
-      '@id': `${siteUrl}/#breadcrumb`,
-      itemListElement: [{ '@type': 'ListItem', position: 1, name: 'Início', item: `${siteUrl}/` }],
-    },
-    {
-      '@type': 'FAQPage',
-      '@id': `${siteUrl}/#faq`,
-      inLanguage: site.locale,
-      isPartOf: { '@id': `${siteUrl}/#webpage` },
-      mainEntity: site.faq.map((f) => ({
-        '@type': 'Question',
-        name: f.q,
-        acceptedAnswer: { '@type': 'Answer', text: f.a },
-      })),
-    },
+    breadcrumbNode(`${siteUrl}/`, [{ name: 'Início', url: `${siteUrl}/` }]),
+    faqNode(`${siteUrl}/`, site.faq),
   ],
 };
 
@@ -501,7 +639,22 @@ const fontsHref =
  * `local` = so a home publica sinais de geolocalizacao, keywords e o preload do
  * hero; numa pagina juridica eles nao ajudam e o preload atrasaria a LCP dela.
  */
-function buildHead({ title, description, canonical, jsonLd, local = false }) {
+// Limites praticos do resultado de busca. Nao sao regra do Google (ele mede em
+// pixels, nao em caracteres), mas passar disso e escrever uma frase que a
+// paciente vai ler cortada no meio. Avisa em vez de falhar: e questao de texto,
+// nao de dado quebrado.
+const SERP = { title: 60, description: 160 };
+function warnLength(route, title, description) {
+  if (title.length > SERP.title) console.warn(`AVISO: ${route} — title com ${title.length} caracteres (o Google corta perto de ${SERP.title}).`);
+  if (description.length > SERP.description) console.warn(`AVISO: ${route} — description com ${description.length} caracteres (o Google corta perto de ${SERP.description}).`);
+}
+
+function buildHead({ title, description, canonical, jsonLd, local = false, keywords = site.seo.keywords, places = locations, preload = hero.path }) {
+  warnLength(canonical.replace(siteUrl, '') || '/', title, description);
+  // Sinais de geolocalizacao. Na home saem os dois consultorios (`geo.placename`
+  // aceita lista); numa pagina de cidade, so o daquela cidade — e o que evita
+  // dizer ao Google que /ponta-pora tambem e sobre Bonito.
+  const geoTags = places.filter((p) => p.geo);
   return [
     `<title>${esc(title)}</title>`,
     `<meta name="description" content="${esc(description)}">`,
@@ -515,19 +668,22 @@ function buildHead({ title, description, canonical, jsonLd, local = false }) {
     isProd
       ? `<meta name="googlebot" content="index,follow,max-snippet:-1,max-image-preview:large">`
       : `<meta name="googlebot" content="noindex,nofollow,noarchive,nosnippet">`,
-    local ? `<meta name="keywords" content="${esc(site.seo.keywords.join(', '))}">` : '',
+    local ? `<meta name="keywords" content="${esc(keywords.join(', '))}">` : '',
     `<meta name="author" content="${esc(site.doctor.fullName)}">`,
     `<meta name="theme-color" content="${site.themeColor}">`,
     `<meta name="color-scheme" content="light">`,
     `<meta name="format-detection" content="telephone=no">`,
-    // Sinais de geolocalizacao para busca local.
-    local ? `<meta name="geo.region" content="${addr.country}-${addr.stateCode}">` : '',
-    local ? `<meta name="geo.placename" content="${esc(addr.city)}">` : '',
-    local ? `<meta name="geo.position" content="${geo.lat};${geo.lng}">` : '',
-    local ? `<meta name="ICBM" content="${geo.lat}, ${geo.lng}">` : '',
+    // Sinais de geolocalizacao para busca local. `geo.position` e `ICBM` levam
+    // UMA coordenada por definicao: numa pagina de cidade e a dela; na home,
+    // a da primeira unidade, ja que os dois consultorios estao no JSON-LD com
+    // coordenada propria — e e de la que o Google tira o dado que importa.
+    local && geoTags.length ? `<meta name="geo.region" content="${places[0].address.country}-${places[0].address.stateCode}">` : '',
+    local ? `<meta name="geo.placename" content="${esc(places.map((p) => p.city).join(', '))}">` : '',
+    local && geoTags.length ? `<meta name="geo.position" content="${geoTags[0].geo.lat};${geoTags[0].geo.lng}">` : '',
+    local && geoTags.length ? `<meta name="ICBM" content="${geoTags[0].geo.lat}, ${geoTags[0].geo.lng}">` : '',
     // Open Graph.
     `<meta property="og:type" content="website">`,
-    `<meta property="og:site_name" content="${esc(site.business.name)}">`,
+    `<meta property="og:site_name" content="${esc(site.practice.name)}">`,
     `<meta property="og:locale" content="pt_BR">`,
     `<meta property="og:url" content="${canonical}">`,
     `<meta property="og:title" content="${esc(title)}">`,
@@ -538,7 +694,7 @@ function buildHead({ title, description, canonical, jsonLd, local = false }) {
     `<meta property="og:image:type" content="image/jpeg">`,
     `<meta property="og:image:width" content="${og.w}">`,
     `<meta property="og:image:height" content="${og.h}">`,
-    `<meta property="og:image:alt" content="Logotipo de ${esc(site.business.name)}">`,
+    `<meta property="og:image:alt" content="Logotipo de ${esc(site.practice.name)}">`,
     // Twitter/X.
     `<meta name="twitter:card" content="summary_large_image">`,
     `<meta name="twitter:title" content="${esc(title)}">`,
@@ -551,8 +707,9 @@ function buildHead({ title, description, canonical, jsonLd, local = false }) {
     `<link rel="icon" href="/icon-192.png" type="image/png" sizes="192x192">`,
     `<link rel="apple-touch-icon" href="/apple-touch-icon.png">`,
     `<link rel="manifest" href="/site.webmanifest">`,
-    // LCP: o hero comeca a baixar junto com o HTML.
-    local ? `<link rel="preload" as="image" href="${hero.path}" fetchpriority="high">` : '',
+    // LCP: a imagem do topo comeca a baixar junto com o HTML. Cada pagina de
+    // cidade tem a sua foto, entao o preload nao pode ser fixo no hero da home.
+    local ? `<link rel="preload" as="image" href="${preload}" fetchpriority="high">` : '',
     // Fontes sem bloquear a renderizacao.
     `<link rel="preconnect" href="https://fonts.googleapis.com">`,
     `<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>`,
@@ -846,16 +1003,26 @@ function stripCssComments(css, file) {
 
 const readCss = async (files) =>
   (await Promise.all(files.map(async (f) => stripCssComments(await readFile(f, 'utf8'), f)))).join('\n');
+// A home nao carrega mais o location.css: o mapa saiu dela e passou a viver nas
+// paginas de cidade (a secao "Onde atende" que ficou no lugar dele e estilizada
+// no styles.css, junto do rodape).
 const css = await readCss([
   'src/styles.css',
   'src/photos.css',
   'src/credentials.css',
   'src/testimonials.css',
-  'src/location.css',
   'src/env-ui.css',
   'src/motion.css',
 ]);
 const privacyCss = await readCss(['src/styles.css', 'src/env-ui.css', 'src/privacy.css', 'src/motion.css']);
+const cityCss = await readCss([
+  'src/styles.css',
+  'src/photos.css',
+  'src/location.css',
+  'src/city.css',
+  'src/env-ui.css',
+  'src/motion.css',
+]);
 
 /**
  * Header, rodape e o script do menu sao os mesmos nas duas paginas. Em vez de
@@ -903,8 +1070,60 @@ const crmLine = site.doctor.crm
   ? ` &middot; <span class="crm">${[site.doctor.crm, site.doctor.rqe].filter(Boolean).map(esc).join(' &middot; ')}</span>`
   : '';
 
-/** Substituicoes comuns as duas paginas (NAP, links, imagens). */
-function fill(tpl) {
+// --- rodape: os dois consultorios -------------------------------------------
+// O rodape aparece em TODAS as paginas, entao esta e a linha que da a cada URL
+// do site o NAP completo das duas unidades — e os dois links internos que
+// levam as paginas de cidade de qualquer lugar do site.
+const footerLocations = locations
+  .map(
+    (l) =>
+      `<a href="${l.path}"><b>${esc(l.label)}</b> ${esc(l.address.street)} — ${esc(l.address.district)}</a>`,
+  )
+  .join('');
+
+// --- home: a secao "Onde atende" --------------------------------------------
+// Cada cartao e o resumo de um consultorio e o link interno para a pagina dele.
+// E daqui que a home passa autoridade para /bonito e /ponta-pora — sem esse
+// link, as duas paginas de cidade ficariam penduradas so no rodape.
+const placeCards = locations
+  .map(
+    (l) =>
+      `<li data-reveal><article>` +
+      `<h3>${esc(l.city)}<span>${esc(l.address.stateCode)}</span></h3>` +
+      `<p class="placeAddr">${esc(l.address.street)}<br>${esc(l.address.district)}, ${esc(l.address.city)}-${esc(l.address.stateCode)}</p>` +
+      `<p class="placeHours"><b>Horário:</b> ${esc(l.hoursText || 'consulte pelo WhatsApp')}</p>` +
+      `<p class="placeArea">${esc(l.areaServed.slice(0, 4).join(' · '))}${l.areaServed.length > 4 ? ' e região' : ''}</p>` +
+      `<a class="placeGo" href="${l.path}">Ver o consultório em ${esc(l.city)} <span aria-hidden="true">&rarr;</span></a>` +
+      `</article></li>`,
+  )
+  .join('');
+
+// Uma linha de endereco por consultorio no bloco de contato da home.
+const contactPlaces = locations
+  .map(
+    (l) =>
+      `<a href="${l.mapUrl}" target="_blank" rel="noopener"><b>Consultório em ${esc(l.city)}:</b> ` +
+      `${esc(l.address.street)} — ${esc(l.address.district)}, ${esc(l.address.city)}-${esc(l.address.stateCode)} ` +
+      `<span aria-hidden="true">&#8599;</span></a>`,
+  )
+  .join('');
+
+// Uniao das regioes atendidas, sem repetir cidade que aparece nas duas listas.
+const areaServedAll = [...new Set(locations.flatMap((l) => l.areaServed))];
+
+// O CRM sem o separador da esquerda — `crmLine` traz um " &middot; " na frente
+// porque emenda no telefone do rodape, e numa linha propria ele sobraria.
+const crmPlain = [site.doctor.crm, site.doctor.rqe].filter(Boolean).map(esc).join(' &middot; ');
+
+/**
+ * Substituicoes comuns a todas as paginas (NAP, links, imagens).
+ *
+ * `loc` liga os marcadores de UNIDADE (__ADDRESS_*__, __MAP_*__, __HOURS_*__):
+ * numa pagina de cidade eles valem os dados daquele consultorio. Fora dela,
+ * esses marcadores nao sao substituidos — e a validacao no fim do build falha
+ * alto, em vez de deixar um endereco pela metade escapar para a home.
+ */
+function fill(tpl, loc) {
   let out = tpl
     .replaceAll('__ANALYTICS_HEAD__', analyticsHead)
     .replaceAll('__MOTION_HEAD__', motionHead)
@@ -924,27 +1143,36 @@ function fill(tpl) {
     .replaceAll('__CRM__', crmLine)
     .replaceAll('__PHONE_DISPLAY__', esc(phone.display))
     .replaceAll('__PHONE_E164__', phone.e164)
-    .replaceAll('__WHATSAPP_URL__', `https://wa.me/${phone.e164.replace('+', '')}?text=${encodeURIComponent(site.business.whatsappText)}`)
-    .replaceAll('__OPENING_HOURS__', hoursText ? `<span><b>Horário:</b> ${esc(hoursText)}</span>` : '')
-    // Mesmo dado, sem a marcacao do bloco de contato: o cartao do mapa monta a
-    // linha de horario com o rotulo proprio dele. Ali o rotulo e fixo, entao o
-    // texto nao pode sair vazio quando `openingHours` estiver vazio — dai o
-    // fallback, que continua verdadeiro seja qual for o horario.
-    .replaceAll('__HOURS_TEXT__', esc(hoursText || 'Consulte os horários pelo WhatsApp'))
-    .replaceAll('__ADDRESS_FULL__', esc(fullAddress))
-    .replaceAll('__ADDRESS_STREET__', esc(addr.street))
-    .replaceAll('__ADDRESS_CITY__', esc(`${addr.district}, ${addr.city}-${addr.stateCode}`))
-    .replaceAll('__MAP_URL__', esc(mapUrl))
-    .replaceAll('__MAP_DIRECTIONS__', esc(mapDirections))
-    .replaceAll('__MAP_EMBED__', esc(mapEmbed))
-    .replaceAll('__WAZE_URL__', esc(wazeUrl))
-    .replaceAll('__AREA_SERVED__', site.business.areaServed.map((c) => `<li>${esc(c)}</li>`).join(''))
+    .replaceAll('__WHATSAPP_URL__', `${whatsappUrl}?text=${encodeURIComponent(site.practice.whatsappText)}`)
+    .replaceAll('__CITIES__', esc(citiesText))
+    .replaceAll('__CITIES_LABEL__', esc(citiesLabel))
+    .replaceAll('__FOOTER_LOCATIONS__', footerLocations)
+    .replaceAll('__CRM_PLAIN__', crmPlain)
     // Comentario de HTML tambem nao e informacao para o navegador. Este replace
     // cobre os marcadores <!--#shell:nome--> (que ja foram consumidos pelo
     // shell(), sobre o `html` cru, antes de chegar aqui) e, de quebra, libera o
     // site.html para ser comentado como todo o resto do projeto — sem os
     // comentarios pesarem no HTML de cada visita.
     .replace(/<!--[\s\S]*?-->/g, '');
+
+  if (loc) {
+    out = out
+      .replaceAll('__LOC_CITY__', esc(loc.city))
+      .replaceAll('__LOC_LABEL__', esc(loc.label))
+      .replaceAll('__LOC_PATH__', loc.path)
+      .replaceAll('__ADDRESS_FULL__', esc(loc.fullAddress))
+      .replaceAll('__ADDRESS_STREET__', esc(loc.address.street))
+      .replaceAll('__ADDRESS_CITY__', esc(`${loc.address.district}, ${loc.address.city}-${loc.address.stateCode}`))
+      .replaceAll('__MAP_URL__', esc(loc.mapUrl))
+      .replaceAll('__MAP_DIRECTIONS__', esc(loc.mapDirections))
+      .replaceAll('__MAP_EMBED__', esc(loc.mapEmbed))
+      .replaceAll('__WAZE_URL__', esc(loc.wazeUrl))
+      // O rotulo do cartao e fixo, entao o texto nao pode sair vazio quando
+      // `openingHours` estiver vazio — dai o fallback, que continua verdadeiro
+      // seja qual for o horario (ver `openingHours` no site-data).
+      .replaceAll('__HOURS_TEXT__', esc(loc.hoursText || 'Consulte os horários pelo WhatsApp'))
+      .replaceAll('__AREA_SERVED__', loc.areaServed.map((c) => `<li>${esc(c)}</li>`).join(''));
+  }
 
   for (const [name, img] of Object.entries(images)) {
     const token = `__${name.toUpperCase().replaceAll('-', '_')}__`;
@@ -960,8 +1188,123 @@ const page = fill(
     .replaceAll('__SERVICE_CARDS__', serviceCards)
     .replaceAll('__CREDENTIAL_ITEMS__', credentialCards)
     .replaceAll('__TESTIMONIAL_CARDS__', testimonialCards)
-    .replaceAll('__FAQ_LIST__', faqList),
+    .replaceAll('__FAQ_LIST__', faqList)
+    .replaceAll('__PLACE_CARDS__', placeCards)
+    .replaceAll('__CONTACT_PLACES__', contactPlaces)
+    .replaceAll('__AREA_SERVED_ALL__', areaServedAll.map((c) => `<li>${esc(c)}</li>`).join('')),
 );
+
+// --- paginas de cidade ------------------------------------------------------
+// Uma rota por consultorio. O <main> vem de location.html; o cabecalho, o
+// rodape e os scripts de menu e FAQ sao os mesmos blocos da home, recortados do
+// site.html — e por isso que mexer no menu continua sendo uma edicao so.
+const cityTemplate = await readFile('location.html', 'utf8');
+
+const cityPages = locations.map((loc) => {
+  // Link para a(s) outra(s) unidade(s). Fecha o triangulo home -> cidade ->
+  // cidade: quem caiu na pagina errada tem para onde ir, e as duas paginas
+  // ficam ligadas entre si, nao so penduradas na home.
+  const others = locations.filter((o) => o.slug !== loc.slug);
+  const otherBlock =
+    `<p class="cityOtherLabel">A Dra. Claudia também atende em</p>` +
+    others
+      .map(
+        (o) =>
+          `<a href="${o.path}"><b>${esc(o.city)}</b>` +
+          `<span>${esc(o.address.street)} — ${esc(o.address.district)}, ${esc(o.address.city)}-${esc(o.address.stateCode)}</span></a>`,
+      )
+      .join('');
+
+  // Lista compacta, e nao os cartoes inteiros da home: as descricoes completas
+  // de cada servico ja vivem em /#cuidados, e repeti-las em tres URLs seria
+  // conteudo duplicado disputando com a propria home. Os itens linkam para la.
+  const serviceChips = site.services
+    .map((s) => `<li><a href="/#cuidados">${esc(s.name)}</a></li>`)
+    .join('');
+
+  const locFaq = loc.page.faq
+    .map(
+      (f, i) =>
+        `<details class="faqItem"${i === 0 ? ' open' : ''}><summary><span>${fillText(f.q, loc)}</span>` +
+        `<b aria-hidden="true"></b></summary><p>${fillText(f.a, loc)}</p></details>`,
+    )
+    .join('');
+
+  const pageId = loc.url;
+  const cityJsonLd = {
+    '@context': 'https://schema.org',
+    '@graph': [
+      websiteNode(),
+      practiceNode(),
+      // O consultorio DESTA pagina primeiro; o outro entra so como referencia
+      // pelo `department` do #practice. Declarar os dois por extenso aqui
+      // faria a pagina de Ponta Pora falar tanto de Bonito quanto de si mesma.
+      locationNode(loc),
+      physicianNode(),
+      primaryImageNode(),
+      {
+        '@type': 'WebPage',
+        '@id': `${pageId}#webpage`,
+        url: pageId,
+        name: loc.page.title,
+        description: fillText(loc.page.description, loc),
+        isPartOf: { '@id': `${siteUrl}/#website` },
+        about: { '@id': loc.id },
+        primaryImageOfPage: { '@id': `${siteUrl}/#primaryimage` },
+        inLanguage: site.locale,
+        breadcrumb: { '@id': `${pageId}#breadcrumb` },
+      },
+      breadcrumbNode(pageId, [
+        { name: 'Início', url: `${siteUrl}/` },
+        { name: `Consultório em ${loc.label}`, url: pageId },
+      ]),
+      faqNode(pageId, loc.page.faq.map((f) => ({ q: fillText(f.q, loc), a: fillText(f.a, loc) }))),
+    ],
+  };
+
+  const photo = images[loc.photo];
+  if (!photo) throw new Error(`site-data.js: locations[${loc.slug}].photo = "${loc.photo}" nao existe em assets/.`);
+
+  const head = buildHead({
+    title: loc.page.title,
+    description: fillText(loc.page.description, loc),
+    canonical: pageId,
+    jsonLd: cityJsonLd,
+    local: true,
+    keywords: loc.page.keywords,
+    // So esta cidade nos sinais de geolocalizacao — dizer ao Google que
+    // /ponta-pora tambem e sobre Bonito e exatamente o que dilui as duas.
+    places: [loc],
+    preload: photo.path,
+  });
+
+  const main = cityTemplate
+    .replaceAll('__LOC_H1__', fillText(`Ginecologista e Obstetra em ${loc.label}`, loc))
+    .replaceAll('__LOC_LEAD__', fillText(loc.page.lead, loc))
+    .replaceAll('__LOC_LANDMARK__', fillText(loc.page.landmark, loc))
+    .replaceAll('__LOC_ABOUT__', loc.page.about.map((p) => `<p>${fillText(p, loc)}</p>`).join(''))
+    .replaceAll('__LOC_SERVICES__', serviceChips)
+    .replaceAll('__LOC_FAQ__', locFaq)
+    .replaceAll('__LOC_OTHER__', otherBlock)
+    .replaceAll('__LOC_PHOTO__', `src="${photo.path}" width="${photo.w}" height="${photo.h}"`);
+
+  const out = fill(
+    `<!doctype html><html lang="pt-BR"><head><meta charset="UTF-8">` +
+      `<meta name="viewport" content="width=device-width,initial-scale=1">` +
+      head +
+      `<style>${cityCss}</style>__ANALYTICS_HEAD____MOTION_HEAD__</head><body__BODY_ATTR__>__ENV_BADGE__` +
+      `<a class="skip" href="#conteudo">Ir para o conteúdo</a>` +
+      toHomeAnchors(shell('nav')) +
+      main +
+      toHomeAnchors(shell('footer')) +
+      shell('menu') +
+      shell('faq') +
+      `__MOTION_BODY____CONSENT_BANNER__</body></html>`,
+    loc,
+  );
+
+  return { loc, out };
+});
 
 // /privacidade reaproveita o shell da home. As imagens do consultorio ficam de
 // fora de proposito: numa pagina juridica elas so pesariam.
@@ -983,25 +1326,46 @@ const privacyPage = fill(
     `__MOTION_BODY____CONSENT_BANNER__</body></html>`,
 );
 
-for (const [label, out] of [['index.html', page], [`${pv.path}/index.html`, privacyPage]]) {
+// Todas as paginas geradas, na ordem em que vao para dist/.
+const pages = [
+  { route: '/', dir: '', html: page },
+  ...cityPages.map(({ loc, out }) => ({ route: loc.path, dir: loc.path, html: out })),
+  { route: pv.path, dir: pv.path, html: privacyPage },
+];
+
+for (const { route, html: out } of pages) {
   const leftovers = out.match(/__[A-Z_]+__|\/\*__STYLES__\*\/|<!--\/?#(shell|opt):/g);
-  if (leftovers) throw new Error(`${label}: placeholders nao substituidos: ${[...new Set(leftovers)].join(', ')}`);
+  if (leftovers) throw new Error(`${route}: placeholders nao substituidos: ${[...new Set(leftovers)].join(', ')}`);
+
+  // Um "-->" sobrando depois da limpeza de comentarios significa que um
+  // comentario do template terminou antes do fim: escrever a sequencia de
+  // fechamento DENTRO de um comentario o encerra ali, e o resto do texto — que
+  // era documentacao para quem edita — vaza como conteudo visivel no topo da
+  // pagina. Ja aconteceu no location.html, e a pagina continua valida o
+  // suficiente para ninguem notar sem olhar.
+  const stray = out.indexOf('-->');
+  if (stray >= 0) {
+    throw new Error(
+      `${route}: sobrou um "-->" no HTML gerado — algum comentario do template fechou antes do fim ` +
+        `e o texto dele virou conteudo visivel. Perto de: ...${out.slice(Math.max(0, stray - 90), stray + 3).replace(/\s+/g, ' ')}`,
+    );
+  }
 }
 
 // A partir daqui nao ha mais nada que possa falhar por conteudo — so agora
 // dist/ e recriado (ver comentario no topo).
 await rm('dist', { recursive: true, force: true });
 await mkdir('dist/assets', { recursive: true });
-await mkdir(`dist${pv.path}`, { recursive: true });
 for (const name of imageNames) await copyFile(`assets/${name}.webp`, `dist/assets/${name}.webp`);
 for (const { path } of Object.values(brand)) await copyFile(path, `dist/${path}`);
 for (const file of iconFiles) await copyFile(`assets/${file}`, `dist/${file}`);
 
 // Pre-comprime para o nginx servir via gzip_static.
-await writeFile('dist/index.html', page);
-await writeFile('dist/index.html.gz', gzipSync(Buffer.from(page), { level: 9 }));
-await writeFile(`dist${pv.path}/index.html`, privacyPage);
-await writeFile(`dist${pv.path}/index.html.gz`, gzipSync(Buffer.from(privacyPage), { level: 9 }));
+for (const { dir, html: out } of pages) {
+  if (dir) await mkdir(`dist${dir}`, { recursive: true });
+  await writeFile(`dist${dir}/index.html`, out);
+  await writeFile(`dist${dir}/index.html.gz`, gzipSync(Buffer.from(out), { level: 9 }));
+}
 
 // --- arquivos auxiliares ----------------------------------------------------
 // lastmod = a mais recente entre as duas fontes de conteudo. Usar so o
@@ -1041,11 +1405,27 @@ if (isProd) {
     .map((i) => `    <image:image><image:loc>${i.url}</image:loc></image:image>`)
     .join('\n');
 
+  // As paginas de cidade vem logo depois da home, com prioridade alta: sao elas
+  // que disputam "ginecologista em <cidade>", e a foto propria de cada uma entra
+  // no image sitemap junto.
+  //
   // /privacidade entra indexavel de proposito: pagina de privacidade visivel e
   // sinal de confianca que o Google valoriza em site de saude (YMYL), e ela nao
   // compete por nenhuma busca que interessa. Prioridade baixa e changefreq anual
   // porque o texto so muda quando o site muda. lastmod vem de privacy.updated —
   // a data do documento, nao a do build.
+  const cityUrls = locations
+    .map(
+      (l) => `  <url>
+    <loc>${l.url}</loc>
+    <lastmod>${lastmod}</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.9</priority>
+    <image:image><image:loc>${images[l.photo].url}</image:loc></image:image>
+  </url>`,
+    )
+    .join('\n');
+
   await writeFile(
     'dist/sitemap.xml',
     `<?xml version="1.0" encoding="UTF-8"?>
@@ -1057,6 +1437,7 @@ if (isProd) {
     <priority>1.0</priority>
 ${sitemapImages}
   </url>
+${cityUrls}
   <url>
     <loc>${siteUrl}${pv.path}</loc>
     <lastmod>${pv.updated}</lastmod>
@@ -1072,8 +1453,8 @@ await writeFile(
   'dist/site.webmanifest',
   JSON.stringify(
     {
-      name: site.business.name,
-      short_name: site.business.shortName,
+      name: site.practice.name,
+      short_name: site.practice.shortName,
       description: site.seo.description,
       lang: site.locale,
       start_url: '/',
@@ -1098,14 +1479,14 @@ await writeFile(
 // URL inexistente (soft 404), o que o Google trata como erro de qualidade.
 await writeFile(
   'dist/404.html',
-  `<!doctype html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,follow"><title>Página não encontrada | ${esc(site.business.shortName)}</title><link rel="icon" href="/favicon.ico" sizes="32x32"><style>body{margin:0;min-height:100vh;display:grid;place-items:center;text-align:center;padding:32px;background:#fbf8f3;color:#30272a;font-family:system-ui,-apple-system,'Segoe UI',sans-serif}h1{font:500 clamp(32px,6vw,52px)/1.1 Georgia,serif;color:${site.themeColor};margin:0 0 14px}p{color:#75696c;max-width:420px;margin:0 auto 26px;line-height:1.7}a{display:inline-block;background:${site.themeColor};color:#fff;text-decoration:none;padding:15px 24px;border-radius:999px;font-weight:700;font-size:14px}</style></head><body><main><h1>Página não encontrada</h1><p>O endereço que você acessou não existe ou foi movido. Volte para a página inicial para conhecer o atendimento da ${esc(site.doctor.fullName)}.</p><a href="/">Ir para a página inicial</a></main></body></html>`,
+  `<!doctype html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,follow"><title>Página não encontrada | ${esc(site.practice.shortName)}</title><link rel="icon" href="/favicon.ico" sizes="32x32"><style>body{margin:0;min-height:100vh;display:grid;place-items:center;text-align:center;padding:32px;background:#fbf8f3;color:#30272a;font-family:system-ui,-apple-system,'Segoe UI',sans-serif}h1{font:500 clamp(32px,6vw,52px)/1.1 Georgia,serif;color:${site.themeColor};margin:0 0 14px}p{color:#75696c;max-width:420px;margin:0 auto 26px;line-height:1.7}a{display:inline-block;background:${site.themeColor};color:#fff;text-decoration:none;padding:15px 24px;border-radius:999px;font-weight:700;font-size:14px}</style></head><body><main><h1>Página não encontrada</h1><p>O endereço que você acessou não existe ou foi movido. Volte para a página inicial para conhecer o atendimento da ${esc(site.doctor.fullName)}.</p><a href="/">Ir para a página inicial</a></main></body></html>`,
 );
 
 const kb = (n) => `${(n / 1024).toFixed(1)} KB`;
-console.log(`dist/index.html    ${kb(Buffer.byteLength(page))} (gz ${kb((await stat('dist/index.html.gz')).size)})`);
-console.log(
-  `dist${pv.path}/    ${kb(Buffer.byteLength(privacyPage))} (gz ${kb((await stat(`dist${pv.path}/index.html.gz`)).size)})`,
-);
+for (const { route, dir, html: out } of pages) {
+  const gz = kb((await stat(`dist${dir}/index.html.gz`)).size);
+  console.log(`${route.padEnd(18)} ${kb(Buffer.byteLength(out))} (gz ${gz})`);
+}
 console.log(`dist/assets/       ${imageNames.length} fotos + ${Object.keys(brand).length} de marca`);
 console.log(`icones             ${iconFiles.length} na raiz (${og.w}x${og.h} no cartao de compartilhamento)`);
 // Fica no resumo porque e um numero de orcamento, nao curiosidade: e quando a

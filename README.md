@@ -16,12 +16,14 @@ faz o TLS e o roteamento.
 ## Estrutura
 
 ```
-site.html                              markup (fonte da verdade do layout)
-src/site-data.js                       NAP, SEO, serviços, formação, FAQ e política de privacidade
+site.html                              markup da home (fonte da verdade do layout)
+location.html                          markup das páginas de cidade (/bonito, /ponta-pora)
+src/site-data.js                       NAP, SEO, consultórios, serviços, formação, FAQ e privacidade
 src/styles.css, src/photos.css         estilos, injetados em /*__STYLES__*/
+src/city.css                           o que é próprio das páginas de cidade
 src/credentials.css                    seção "Formação e atuação" (só na home)
 src/testimonials.css                   seção "Depoimentos" (só na home, e só se ativada)
-src/location.css                       seção "Como chegar" / mapa (só na home)
+src/location.css                       mapa "Como chegar" (só nas páginas de cidade)
 src/env-ui.css                         selo de ambiente e aviso de cookies (as duas páginas)
 src/privacy.css                        visual de /privacidade (só nessa página)
 src/motion.css                         animações e micro-interações (sempre o ÚLTIMO do bundle)
@@ -165,6 +167,49 @@ restringem depoimento de paciente como peça publicitária — a mesma restriç�
 no comentário de `credentials`. Nada da seção entra no JSON-LD: nota/estrela própria de
 `LocalBusiness` é contra as diretrizes do Google (ver "Avaliações", mais abaixo).
 
+### Dois consultórios (Bonito e Ponta Porã)
+
+A Dra. Claudia atende em **duas cidades**, e o site é estruturado em torno disso:
+
+| Rota | O que é | O que disputa na busca |
+|---|---|---|
+| `/` | Hub da marca. Apresenta os dois consultórios e linka para as duas páginas | "Dra. Claudia Maciel", termos gerais |
+| `/bonito` | Página do consultório de Bonito: endereço, mapa, horário, região e dúvidas próprias | "ginecologista em Bonito-MS" |
+| `/ponta-pora` | O mesmo, para Ponta Porã | "ginecologista em Ponta Porã" |
+
+**Por que páginas separadas e não uma só.** `title` e `h1` são os dois sinais
+mais fortes de intenção local, e cada um só consegue mirar uma cidade. Uma página
+tentando ranquear para "ginecologista em Bonito" **e** "ginecologista em Ponta
+Porã" costuma não ranquear bem para nenhuma das duas. Com uma página por cidade,
+cada uma tem título, H1, endereço, horário, mapa e `LocalBusiness` próprios — e
+a home continua ganhando as buscas pelo nome da médica.
+
+**Para acrescentar ou mudar um consultório**, mexa só em `src/site-data.js` →
+`locations`. Dali saem, sozinhos: a rota, o `title`/`description`/H1, o cartão na
+seção "Onde atende" da home, a linha no rodapé, o nó `LocalBusiness` no JSON-LD
+das duas páginas, a entrada no `sitemap.xml` e os sinais de geolocalização.
+
+A única coisa que **não** é automática é a rota no nginx — e o build falha com
+instruções se ela faltar:
+
+```
+deploy/nginx.conf: falta o bloco da rota /campo-grande. Acrescente, junto dos outros:
+    location = /campo-grande {
+        try_files /campo-grande/index.html =404;
+    }
+```
+
+⚠️ **Cada unidade precisa do seu próprio Google Business Profile**, com o mesmo
+endereço, telefone e horário que estão no `site-data.js`. Sem o perfil, a página
+da cidade não entra no mapa local; com o perfil divergente do site, entra pior do
+que se não existisse. É o par que o Google mais compara em busca local.
+
+O texto de cada página de cidade é **escrito por extenso** em
+`locations[].page`, e não montado a partir de um molde com a cidade trocada: duas
+páginas de cidade quase iguais são conteúdo duplicado, e o Google escolhe uma só
+para ranquear. Pelo mesmo motivo, cada uma tem a sua foto (`locations[].photo`) e
+as suas perguntas frequentes.
+
 ### Logotipo
 
 Tudo em `assets/` que leva a marca é **gerado** a partir de um único arquivo,
@@ -217,7 +262,8 @@ rich result no Google).
 | `sameAs` + `alternateName` | Liga o site aos perfis já indexados (Instagram, Doctoralia) na mesma entidade |
 | `openingHoursSpecification` | Habilita o "aberto agora" na SERP; a linha visível de horário sai do mesmo array |
 | `robots.txt` | Libera tudo + aponta o sitemap (inclusive para GPTBot / Google-Extended) |
-| `sitemap.xml` | URL, `lastmod` e extensão *image sitemap* com as 5 fotos |
+| `sitemap.xml` | As 4 URLs (`/`, `/bonito`, `/ponta-pora`, `/privacidade`), `lastmod` e extensão *image sitemap* |
+| Uma `LocalBusiness` por consultório | Cada unidade tem `@id`, endereço, horário e região próprios, ligadas pelo `department` da clínica — é o que diz ao Google que são a mesma marca em duas cidades, e não dois negócios homônimos |
 | `favicon.ico` + ícones PNG + `site.webmanifest` | O Google exige favicon para exibir o ícone na SERP mobile |
 | `og:image` / `twitter:image` | Cartão 1200×630 com a logo (`assets/og-image.jpg`) — é o que aparece ao compartilhar o link |
 | `logo` no JSON-LD | Logotipo da entidade, separado da foto da médica (`image`) |
@@ -269,7 +315,7 @@ propriedade dela, e continua linkado no rodapé.
    Google Business Profile e neste site.
 3. **Remover/atualizar o consultório de Campo Grande no Doctoralia** — o perfil ainda lista
    um segundo endereço (Clovis Bevilaqua, 36) que não está mais em uso.
-4. **Coordenadas** (`business.geo`) — é o único dado ainda aproximado (centro de Bonito-MS).
+4. **Coordenadas** (`locations[].geo`) — as duas são aproximadas (centro da cidade).
    Pegue as exatas no Google Maps: botão direito no ponto → copiar coordenadas.
 5. **Decidir a seção de depoimentos** (`testimonials`) — hoje os textos são fictícios e o
    build de produção falha por causa disso. Ou entram depoimentos reais e autorizados, ou a
@@ -279,15 +325,35 @@ propriedade dela, e continua linkado no rodapé.
    da própria bio do Instagram) e há uma pergunta nova sobre reposição hormonal. Confirme
    que descrevem exatamente o que é oferecido.
 
-Já conferidos e gravados: CRM/MS 5944, RQE 4352, endereço completo com CEP 79290-000,
-horário Seg–Sex 8h–12h e 14h–18h.
+**Específico de Ponta Porã** (a unidade nova — só o endereço foi informado):
+
+7. **Horários** (`locations[1].openingHours`) — está **vazio**. Enquanto estiver, a página
+   mostra "Consulte os horários pelo WhatsApp" e o JSON-LD omite o
+   `openingHoursSpecification`, que é o comportamento correto: horário inventado diverge do
+   Google Business Profile e prejudica a unidade na busca local. Preencher desbloqueia o
+   "aberto agora" na busca e atualiza sozinho o texto da página e o FAQ.
+8. **Conferir o endereço e o CEP** — "Rua 18 de Julho, 44 — Centro" veio por mensagem; o CEP
+   (79900-000) é o geral da cidade. Confirme os dois contra o Google Business Profile da
+   unidade antes de publicar.
+9. **Região atendida** (`locations[1].areaServed`) — a lista atual (Antônio João, Aral
+   Moreira, Laguna Carapã, Amambai, Bela Vista) foi montada por proximidade geográfica.
+   É uma declaração de **de onde vêm as pacientes**, não de cidades próximas no mapa —
+   ajuste com a Dra. Claudia.
+10. **Criar o Google Business Profile de Ponta Porã** — é uma unidade nova, e sem perfil
+    próprio ela não entra no mapa local por mais bem feita que a página esteja.
+
+Já conferidos e gravados: CRM/MS 5944, RQE 4352, endereço de Bonito com CEP 79290-000,
+horário de Bonito Seg–Sex 8h–12h e 14h–18h, telefone (67) 99250-5165 para as duas unidades.
 
 ### Fora do código (o que mais move o ponteiro em busca local)
 
 O site é só metade do trabalho. Para aparecer no mapa e no pacote local do Google:
 
-1. **Google Business Profile** — criar/reivindicar o perfil, com o **mesmo** nome, endereço
-   e telefone (NAP) que estão em `src/site-data.js`. É o maior fator isolado de SEO local.
+1. **Google Business Profile — um por consultório** — criar/reivindicar os perfis de Bonito
+   **e** de Ponta Porã, cada um com o **mesmo** nome, endereço, telefone e horário (NAP) que
+   estão em `src/site-data.js`, e cada um apontando o site para a sua página (`/bonito`,
+   `/ponta-pora`). É o maior fator isolado de SEO local — e, com duas unidades, é o que
+   impede o Google de tratá-las como um negócio só (ou como duplicata).
 2. **Google Search Console** — verificar o domínio e enviar
    `https://drclaudiamaciel.com.br/sitemap.xml`.
 3. **Avaliações** — hoje há **1 avaliação** (5,0) no Google. É o ponto mais fraco do perfil e
@@ -355,7 +421,7 @@ imagem.
 
 ### 404
 
-Qualquer URL fora das duas rotas do site (`/` e `/privacidade`) devolve **404 de verdade**
+Qualquer URL fora das quatro rotas do site (`/`, `/bonito`, `/ponta-pora` e `/privacidade`) devolve **404 de verdade**
 com `dist/404.html`. Antes, o `try_files $uri /index.html` devolvia o index com status 200
 em qualquer endereço, o que o Google classifica como *soft 404* e trata como erro de
 qualidade.

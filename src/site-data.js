@@ -55,69 +55,240 @@ export const site = {
     ],
   },
 
-  business: {
+  // --- A clinica, no nivel da marca -------------------------------------------
+  // O que NAO depende de qual consultorio: nome, telefone e o texto do WhatsApp.
+  // Endereco, horario e regiao atendida vivem em `locations`, porque sao
+  // diferentes em cada cidade.
+  practice: {
     name: 'Dra. Claudia Maciel — Ginecologia e Obstetrícia',
     shortName: 'Dra. Claudia Maciel',
-    // Endereco completo conferido e confirmado: bate com o Google Business
-    // Profile. O Doctoralia lista o bairro como "Alvorada" — divergencia
-    // conhecida, corrigir la (o NAP precisa ser identico em todos os diretorios).
-    address: {
-      street: 'Rua Santana do Paraíso, 1026',
-      district: 'Centro',
-      city: 'Bonito',
-      state: 'Mato Grosso do Sul',
-      stateCode: 'MS',
-      postalCode: '79290-000',
-      country: 'BR',
-    },
-    // [CONFERIR] Coordenadas aproximadas do centro de Bonito-MS. Pegue as exatas
-    // no Google Maps (clique com o botao direito no ponto > copiar coordenadas).
-    geo: { lat: -21.1261, lng: -56.4822 },
-    // Numero confirmado como correto. ATENCAO: o Google Business Profile ainda
-    // exibe (67) 98446-1107 — corrigir la, senao o NAP fica inconsistente entre
-    // o site e o perfil, que e o par que o Google mais compara em busca local.
+    // Numero confirmado como correto, e o mesmo nos dois consultorios. ATENCAO:
+    // o Google Business Profile de Bonito ainda exibe (67) 98446-1107 —
+    // corrigir la, senao o NAP fica inconsistente entre o site e o perfil, que
+    // e o par que o Google mais compara em busca local.
     phone: { display: '(67) 99250-5165', e164: '+5567992505165' },
     whatsappText: 'Olá, gostaria de agendar uma consulta com a Dra. Claudia.',
-    // Vira `openingHoursSpecification` no JSON-LD (habilita o "aberto agora" na
-    // busca) E a linha de horario visivel no bloco de contato. Deixe vazio para
-    // omitir dos dois lugares. Dias em ingles: e o vocabulario do schema.org.
-    openingHours: [
-      { days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'], opens: '08:00', closes: '12:00' },
-      { days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'], opens: '14:00', closes: '18:00' },
-    ],
-    areaServed: [
-      'Bonito',
-      'Jardim',
-      'Guia Lopes da Laguna',
-      'Bodoquena',
-      'Miranda',
-      'Anastácio',
-      'Aquidauana',
-      'Nioaque',
-      'Bela Vista',
-    ],
   },
 
+  // --- Consultorios ------------------------------------------------------------
+  // A Dra. Claudia atende em DUAS cidades, e cada uma tem pagina propria
+  // (/bonito e /ponta-pora). Isso nao e capricho de arquitetura: `title` e `h1`
+  // sao os dois sinais mais fortes de intencao local, e cada um so consegue
+  // mirar uma cidade. Uma pagina unica disputando "ginecologista em Bonito" E
+  // "ginecologista em Ponta Pora" tende a nao ranquear bem para nenhuma das
+  // duas. A home ficou como hub: cobre a marca, apresenta os dois consultorios
+  // e manda o link interno para cada pagina de cidade.
+  //
+  // Cada item aqui vira, sozinho:
+  //   - a rota /<slug>, com title, description, H1, mapa e horario proprios;
+  //   - um no LocalBusiness no @graph da home E da pagina da cidade;
+  //   - um cartao na secao "Onde atende" da home;
+  //   - uma linha no rodape e uma no sitemap.xml.
+  //
+  // ⚠️ Cada unidade precisa do SEU PROPRIO perfil no Google Business Profile,
+  // com este mesmo endereco, este mesmo telefone e este mesmo horario. Sem o
+  // perfil, a pagina da cidade nao entra no mapa local — e com o perfil
+  // divergente do site, entra pior do que se nao existisse.
+  locations: [
+    {
+      slug: 'bonito',
+      city: 'Bonito',
+      // Rotulo curto para menu, rodape e migalhas de pao.
+      label: 'Bonito-MS',
+      // Foto do topo da pagina da cidade (nome do arquivo em assets/, sem
+      // extensao). Uma por cidade de proposito: duas paginas de cidade com a
+      // mesma foto e o mesmo texto sao conteudo duplicado, e o Google escolhe
+      // uma so para ranquear. Esta imagem tambem e a LCP da pagina — o build
+      // faz o `preload` dela.
+      photo: 'claudia-rosa',
+      // Endereco conferido e confirmado: bate com o Google Business Profile.
+      // O Doctoralia lista o bairro como "Alvorada" — divergencia conhecida,
+      // corrigir la (o NAP precisa ser identico em todos os diretorios).
+      address: {
+        street: 'Rua Santana do Paraíso, 1026',
+        district: 'Centro',
+        city: 'Bonito',
+        state: 'Mato Grosso do Sul',
+        stateCode: 'MS',
+        postalCode: '79290-000',
+        country: 'BR',
+      },
+      // [CONFERIR] Coordenadas aproximadas do centro de Bonito-MS. Pegue as
+      // exatas no Google Maps (botao direito no ponto > copiar coordenadas).
+      geo: { lat: -21.1261, lng: -56.4822 },
+      // Vira `openingHoursSpecification` no JSON-LD (habilita o "aberto agora"
+      // na busca) E a linha de horario visivel na pagina. Deixe a lista vazia
+      // para omitir dos dois lugares — melhor sem horario do que com horario
+      // divergente do Google Business Profile. Dias em ingles: e o vocabulario
+      // do schema.org.
+      openingHours: [
+        { days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'], opens: '08:00', closes: '12:00' },
+        { days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'], opens: '14:00', closes: '18:00' },
+      ],
+      areaServed: [
+        'Bonito',
+        'Jardim',
+        'Guia Lopes da Laguna',
+        'Bodoquena',
+        'Miranda',
+        'Anastácio',
+        'Aquidauana',
+        'Nioaque',
+        'Bela Vista',
+      ],
+      // Conteudo da pagina /bonito. Escrito por extenso, e nao montado a partir
+      // de um molde com a cidade trocada: duas paginas de cidade quase iguais
+      // sao conteudo duplicado, e o Google escolhe uma so para ranquear.
+      // Os marcadores {endereco}, {cidade}, {horario} e {telefone} sao
+      // resolvidos no build com os dados DESTE consultorio.
+      page: {
+        title: 'Ginecologista e Obstetra em Bonito-MS | Dra. Claudia Maciel',
+        description:
+          'Ginecologista e obstetra em Bonito-MS. Consulta, pré-natal e climatério com a Dra. Claudia Maciel, no Centro de Bonito. Agende pelo WhatsApp {telefone}.',
+        keywords: [
+          'ginecologista em Bonito MS',
+          'obstetra em Bonito MS',
+          'ginecologista e obstetra Bonito',
+          'consulta ginecológica Bonito',
+          'pré-natal Bonito MS',
+          'climatério e menopausa Bonito',
+          'reposição hormonal Bonito MS',
+          'laser íntimo Bonito MS',
+        ],
+        lead:
+          'O consultório fica no Centro de Bonito, na {endereco}. É onde a Dra. Claudia Maciel atende consulta ginecológica, pré-natal, climatério e saúde íntima — com hora marcada e tempo para conversar.',
+        // Paragrafos da secao "O atendimento em <cidade>".
+        about: [
+          'Em Bonito, a agenda é organizada para que cada consulta tenha o tempo que precisa. A avaliação começa por uma conversa: o que mudou, o que incomoda, o que você já ouviu falar e ficou sem entender. Só depois vêm o exame e a conduta, explicados antes de qualquer decisão.',
+          'O consultório também recebe mulheres que vêm de fora — de Jardim, Bodoquena, Guia Lopes da Laguna e de outras cidades da região. Quando a consulta envolve deslocamento, vale avisar no agendamento: sempre que possível, exames e retorno são combinados para aproveitar a mesma viagem.',
+        ],
+        // Referencia curta de localizacao (terceiro item da lista do topo).
+        // ⚠️ So ponto de referencia CONFERIDO. Um "a duas quadras da praca X"
+        // errado manda a paciente para o lugar errado — num site de medica isso
+        // pesa mais do que a frase soar simpatica. Hoje esta so o bairro, que
+        // sai do proprio endereco; para enriquecer, confirme com a Dra. Claudia.
+        landmark: 'No Centro de Bonito',
+        faq: [
+          {
+            q: 'Onde fica o consultório da Dra. Claudia Maciel em Bonito?',
+            a: 'O consultório fica na {endereco}. O acesso é pelo Centro da cidade, e o mapa com a rota está nesta página.',
+          },
+          {
+            q: 'Quais são os horários de atendimento em Bonito?',
+            a: 'O atendimento em Bonito é {horario}. As consultas são com hora marcada — o agendamento é feito pelo WhatsApp {telefone}.',
+          },
+          {
+            q: 'A Dra. Claudia atende pacientes de outras cidades da região?',
+            a: 'Sim. O consultório de Bonito recebe pacientes de Jardim, Guia Lopes da Laguna, Bodoquena, Miranda, Anastácio, Aquidauana, Nioaque e Bela Vista. Para quem vem de fora, vale avisar no agendamento para organizar exames e retorno na mesma viagem.',
+          },
+        ],
+      },
+    },
+    {
+      slug: 'ponta-pora',
+      city: 'Ponta Porã',
+      label: 'Ponta Porã-MS',
+      photo: 'claudia-verde',
+      // [CONFERIR] Endereco informado pela Dra. Claudia. Confirme o numero e o
+      // bairro no Google Business Profile desta unidade ANTES de publicar: este
+      // endereco e o que o Google vai cruzar com o perfil.
+      address: {
+        street: 'Rua 18 de Julho, 44',
+        district: 'Centro',
+        city: 'Ponta Porã',
+        state: 'Mato Grosso do Sul',
+        stateCode: 'MS',
+        // [CONFERIR] CEP geral de Ponta Pora. Se a unidade tiver CEP proprio de
+        // logradouro, troque aqui — ou deixe vazio, que o build omite o campo.
+        postalCode: '79900-000',
+        country: 'BR',
+      },
+      // [CONFERIR] Coordenadas aproximadas do centro de Ponta Pora-MS.
+      geo: { lat: -22.5364, lng: -55.7256 },
+      // [PREENCHER] Dias e horarios do consultorio de Ponta Pora. Enquanto a
+      // lista estiver vazia, a pagina mostra "Consulte os horários pelo
+      // WhatsApp" e o JSON-LD omite o openingHoursSpecification — que e o certo:
+      // horario inventado diverge do Google Business Profile e prejudica o
+      // ranqueamento local da unidade.
+      openingHours: [],
+      // [CONFERIR] Municipios vizinhos de Ponta Pora. Ajuste com a Dra. Claudia:
+      // `areaServed` e uma declaracao de onde vem a paciente, nao uma lista de
+      // cidades proximas no mapa.
+      areaServed: ['Ponta Porã', 'Antônio João', 'Aral Moreira', 'Laguna Carapã', 'Amambai', 'Bela Vista'],
+      page: {
+        // Sem o "-MS" aqui (ao contrario de Bonito) so para caber em 60
+        // caracteres. Nao ha perda: o H1, a migalha e o endereco da pagina
+        // trazem o estado, e "Ponta Pora" nao e ambiguo no Brasil.
+        title: 'Ginecologista e Obstetra em Ponta Porã | Dra. Claudia Maciel',
+        description:
+          'Ginecologista e obstetra em Ponta Porã-MS. Consulta, pré-natal e climatério com a Dra. Claudia Maciel, no Centro. Agende pelo WhatsApp {telefone}.',
+        keywords: [
+          'ginecologista em Ponta Porã',
+          'obstetra em Ponta Porã MS',
+          'ginecologista e obstetra Ponta Porã',
+          'consulta ginecológica Ponta Porã',
+          'pré-natal Ponta Porã MS',
+          'climatério e menopausa Ponta Porã',
+          'reposição hormonal Ponta Porã MS',
+          'laser íntimo Ponta Porã MS',
+        ],
+        lead:
+          'Em Ponta Porã, a Dra. Claudia Maciel atende na {endereco}. O mesmo cuidado do consultório de Bonito: consulta sem pressa, conduta explicada antes de ser decidida e acompanhamento em cada fase da vida.',
+        about: [
+          'A consulta em Ponta Porã segue o que a Dra. Claudia faz nos dois consultórios: ouvir primeiro. Ciclo, sintomas, histórico e o que você já tentou antes entram na conversa; o exame e a conduta vêm depois, e nada é decidido sem que você entenda por quê.',
+          'O atendimento cobre as mesmas áreas: consulta ginecológica de rotina, pré-natal, climatério e reposição hormonal, saúde íntima e planejamento familiar. Exames anteriores ajudam — leve o que tiver, junto com a lista dos medicamentos em uso.',
+        ],
+        landmark: 'No Centro de Ponta Porã',
+        faq: [
+          {
+            q: 'Onde fica o consultório da Dra. Claudia Maciel em Ponta Porã?',
+            a: 'O consultório fica na {endereco}. O mapa com a rota está nesta página.',
+          },
+          {
+            q: 'Em quais dias a Dra. Claudia atende em Ponta Porã?',
+            a: 'O atendimento em Ponta Porã é {horario}. Como a Dra. Claudia divide a agenda entre os dois consultórios, o melhor caminho é confirmar a data pelo WhatsApp {telefone}.',
+          },
+          {
+            q: 'É a mesma médica que atende em Bonito?',
+            a: 'Sim. É o mesmo atendimento, com a mesma médica, em dois consultórios: um em Ponta Porã e outro no Centro de Bonito. O contato para agendar é o mesmo nos dois: {telefone}.',
+          },
+        ],
+      },
+    },
+  ],
+
   seo: {
-    title: 'Ginecologista e Obstetra em Bonito-MS | Dra. Claudia Maciel',
+    // A home e o hub da marca: cobre as duas cidades e manda o link interno
+    // para cada pagina de cidade, que e quem disputa a busca local. Por isso o
+    // title tem as duas — quem busca pelo nome da medica chega aqui, e quem
+    // busca por cidade chega na pagina certa.
+    // Sem "| Dra. Claudia Maciel" no fim: com as duas cidades, o titulo passava
+    // de 60 caracteres e o Google cortava justamente o nome. O dominio
+    // (drclaudiamaciel.com.br) aparece no resultado de busca LOGO ACIMA do
+    // titulo — a marca ja esta la, e o espaco rende mais com as duas cidades.
+    title: 'Ginecologista e Obstetra em Bonito e Ponta Porã-MS',
+    // Ate ~160 caracteres: o Google trunca a partir dai, e a frase cortada no
+    // meio e a que a paciente le no resultado de busca. O build avisa quando
+    // passa disso.
     description:
-      'Dra. Claudia Maciel, ginecologista e obstetra em Bonito-MS. Consulta ginecológica, pré-natal e climatério com atendimento humanizado. Agende pelo WhatsApp.',
+      'Dra. Claudia Maciel, ginecologista e obstetra em Bonito-MS e Ponta Porã-MS. Consulta, pré-natal e climatério com atendimento humanizado. Agende pelo WhatsApp.',
     // Imagem principal da home: e ela que recebe o `preload` (e a LCP da pagina)
     // e que vira o `primaryImageOfPage` no JSON-LD. NAO e o que aparece ao
     // compartilhar o link — esse e o cartao de marca, assets/og-image.jpg, que o
     // build monta a partir do logotipo (ver scripts/gen-brand.mjs).
     heroImage: 'claudia-hero',
+    // Palavras-chave da HOME. As de cada cidade ficam em `locations[].page`.
     keywords: [
       'ginecologista em Bonito MS',
+      'ginecologista em Ponta Porã MS',
       'obstetra em Bonito MS',
-      'ginecologista e obstetra Bonito',
-      'consulta ginecológica Bonito',
-      'pré-natal Bonito MS',
+      'obstetra em Ponta Porã MS',
       'Dra. Claudia Maciel',
+      'ginecologista e obstetra Mato Grosso do Sul',
+      'consulta ginecológica MS',
+      'pré-natal Bonito e Ponta Porã',
       'saúde da mulher Bonito',
-      'climatério e menopausa Bonito',
-      'reposição hormonal Bonito MS',
-      'laser íntimo Bonito MS',
+      'saúde da mulher Ponta Porã',
     ],
   },
 
@@ -203,8 +374,8 @@ export const site = {
     {
       icon: '⌂',
       label: 'Onde atende',
-      value: 'Centro de Bonito-MS',
-      text: 'Atendimento presencial em {endereco}, com pacientes de Bonito e de mais oito cidades da região.',
+      value: 'Bonito e Ponta Porã-MS',
+      text: 'Dois consultórios: {enderecos}. O agendamento é o mesmo para os dois, pelo WhatsApp.',
     },
     // [PREENCHER] Confirmar com a Dra. Claudia e descomentar (a secao aceita 4
     // ou 6 itens sem ajuste de layout — com 5 sobra um cartao solto na grade):
@@ -335,8 +506,12 @@ export const site = {
       a: 'Sim. O acompanhamento obstétrico contempla as consultas de pré-natal, a solicitação e a leitura dos exames de cada trimestre e a orientação sobre o parto e o pós-parto.',
     },
     {
+      q: 'Em quais cidades a Dra. Claudia Maciel atende?',
+      a: 'Em duas: Bonito-MS, na Rua Santana do Paraíso, 1026, Centro; e Ponta Porã-MS, na Rua 18 de Julho, 44, Centro. É o mesmo atendimento nos dois consultórios, e o agendamento é feito pelo mesmo WhatsApp.',
+    },
+    {
       q: 'Como faço para agendar uma consulta?',
-      a: 'O agendamento é feito pelo WhatsApp (67) 99250-5165. O consultório fica na Rua Santana do Paraíso, 1026, Centro, em Bonito-MS.',
+      a: 'O agendamento é feito pelo WhatsApp (67) 99250-5165, para os dois consultórios. Basta informar em qual cidade você prefere ser atendida — Bonito ou Ponta Porã — e a agenda é combinada por lá.',
     },
   ],
 

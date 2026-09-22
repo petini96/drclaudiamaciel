@@ -73,11 +73,61 @@ propriedade dela, e segue linkado no rodapé.
 | `geo.region`, `geo.position`, `ICBM` | Sinais de geolocalização para busca local |
 | `favicon.ico` (16/32/48) + `icon-192/512.png` + `apple-touch-icon.png` + `site.webmanifest` | O Google **exige** favicon para exibir o ícone do site na SERP mobile |
 | `logo` no `@graph` | Logotipo da entidade, separado do `image` (a foto da médica). É o campo que o Google usa para representar a marca no Knowledge Panel — uma fotografia ali sai cortada e sem leitura |
+| Uma página por consultório | `/bonito` e `/ponta-pora`, cada uma com `title`, `h1`, endereço, mapa, horário, região e `LocalBusiness` próprios (ver "Duas cidades", abaixo) |
+
+### Duas cidades (Bonito e Ponta Porã)
+
+A Dra. Claudia atende em dois consultórios, e isso é uma decisão de arquitetura,
+não só de conteúdo.
+
+**O problema.** `title` e `h1` são os dois sinais mais fortes de intenção local, e
+cada um só consegue mirar uma cidade. Uma página única disputando "ginecologista
+em Bonito" **e** "ginecologista em Ponta Porã" divide o foco e tende a não
+ranquear bem para nenhuma das duas — o Google não tem como decidir de qual
+cidade a página é.
+
+**A estrutura.**
+
+| Rota | Papel | `title` | `LocalBusiness` no `@graph` |
+|---|---|---|---|
+| `/` | Hub da marca | "Ginecologista e Obstetra em Bonito e Ponta Porã-MS" | **os dois** |
+| `/bonito` | Unidade | "Ginecologista e Obstetra em Bonito-MS \| Dra. Claudia Maciel" | só Bonito |
+| `/ponta-pora` | Unidade | "Ginecologista e Obstetra em Ponta Porã \| Dra. Claudia Maciel" | só Ponta Porã |
+
+A home declara **as duas** unidades para que o Google entenda que a entidade tem
+dois endereços mesmo que a visitante nunca abra as páginas de cidade. Cada página
+de cidade declara **só a sua** — incluir a outra diria ao Google que
+`/ponta-pora` também é sobre Bonito, que é exatamente o que dilui as duas. Pelo
+mesmo motivo, `geo.region`, `geo.position` e `keywords` são por página.
+
+**O grafo.** Um `MedicalOrganization` (`#practice`) sem endereço, porque ele tem
+dois, com `department` apontando para as duas unidades; cada unidade é
+`Physician + MedicalClinic + LocalBusiness` com `branchOf`/`parentOrganization` de
+volta; e um `Person` (a médica) com `workLocation` nas duas. É esse desenho que
+diz "mesma marca, duas unidades" em vez de deixar o Google supor — ou pior,
+tratá-las como dois negócios homônimos.
+
+**Conteúdo duplicado.** Duas páginas de cidade montadas a partir do mesmo molde
+com o nome trocado são conteúdo duplicado, e o Google escolhe uma só para
+ranquear. Por isso cada uma tem texto escrito por extenso (`locations[].page` no
+site-data), foto própria (`locations[].photo`) e perguntas frequentes próprias; e
+por isso os serviços aparecem ali como lista compacta linkando para `/#cuidados`,
+em vez de repetir as descrições completas em três URLs.
+
+**Links internos.** A home linka para as duas; cada cidade linka para a outra e
+de volta para a home; o rodapé, presente em todas as páginas, traz o NAP completo
+das duas unidades e os dois links.
+
+**Fora do código:** cada unidade precisa do **seu** Google Business Profile, com o
+mesmo NAP do `site-data.js` e apontando para a sua página. Sem isso, a página da
+cidade não entra no pacote local por melhor que seja.
 
 ### `sitemap.xml`
 
-Gerado no build, com a extensão *image sitemap* — as 5 fotos são declaradas explicitamente
-para o Google Imagens:
+Gerado no build, com as 4 URLs do site e a extensão *image sitemap* — as 5 fotos são
+declaradas explicitamente para o Google Imagens, e cada página de cidade declara a sua.
+As páginas de cidade entram com prioridade 0.9, logo abaixo da home: são elas que disputam
+"ginecologista em &lt;cidade&gt;".
 
 ```xml
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
@@ -368,13 +418,23 @@ pintou conteúdo" — zerando as quatro categorias.
 
 ### No código
 
-1. **Coordenadas exatas** (`business.geo` em `src/site-data.js`) — hoje é o centro aproximado
-   de Bonito-MS. Pegue no Google Maps: botão direito no ponto → copiar coordenadas.
+1. **Coordenadas exatas** (`locations[].geo` em `src/site-data.js`) — as duas são o centro
+   aproximado da cidade. Pegue no Google Maps: botão direito no ponto → copiar coordenadas.
+   Ainda mais crítico em Ponta Porã: a unidade é nova e não tem perfil no Google Business
+   para corrigir um pino no lugar errado.
 2. **URLs de perfil faltantes** para `sameAs` — `agenda.app.br`, `BoaConsulta` e o link do
    Google Business Profile. Aparecem truncadas na busca; abra cada perfil e copie da barra de
    endereço. *Só inclua URL conferida: link quebrado em `sameAs` atrapalha em vez de ajudar.*
 3. **Revisar serviços e FAQ** — confirmar que os textos ampliados descrevem exatamente o que
    é oferecido no consultório.
+4. **Horários de Ponta Porã** (`locations[1].openingHours`) — vazio. Enquanto estiver, o
+   `openingHoursSpecification` daquela unidade é omitido do JSON-LD e a página mostra
+   "Consulte os horários pelo WhatsApp". É o comportamento correto — horário divergente do
+   Google Business Profile prejudica mais do que a ausência dele —, mas é uma pendência:
+   sem horário não há "aberto agora" na busca.
+5. **Endereço, CEP e região de Ponta Porã** — o endereço veio por mensagem, o CEP é o geral
+   da cidade e a `areaServed` foi montada por proximidade geográfica. Conferir os três com a
+   Dra. Claudia e contra o Google Business Profile da unidade.
 4. **Verificação manual de acessibilidade** — os 10 audits que o Lighthouse não
    automatiza (seção 8). O mais relevante aqui é o menu mobile (`#menuBtn` com
    `aria-expanded`): abrir pelo teclado, tabular dentro dele, fechar com `Esc` e conferir
