@@ -2,9 +2,13 @@
 FROM node:22-alpine AS build
 
 WORKDIR /app
-COPY build.mjs site.html ./
+COPY build.mjs site.html location.html ./
 COPY src ./src
 COPY assets ./assets
+# O build confere se cada rota de consultorio tem o seu bloco `location =` no
+# nginx.conf (o porque esta em build.mjs). Sem o arquivo aqui a verificacao nao
+# roda — e ela so tem valor no build que de fato gera a imagem.
+COPY deploy/nginx.conf ./deploy/nginx.conf
 
 # O ambiente entra por build arg porque o HTML e estatico: meta robots,
 # robots.txt, sitemap e o Measurement ID do GA4 sao decididos no build, nao em
