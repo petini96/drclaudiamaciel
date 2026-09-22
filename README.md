@@ -327,11 +327,13 @@ propriedade dela, e continua linkado no rodapé.
 
 **Específico de Ponta Porã** (a unidade nova — só o endereço foi informado):
 
-7. **Horários** (`locations[1].openingHours`) — está **vazio**. Enquanto estiver, a página
-   mostra "Consulte os horários pelo WhatsApp" e o JSON-LD omite o
-   `openingHoursSpecification`, que é o comportamento correto: horário inventado diverge do
-   Google Business Profile e prejudica a unidade na busca local. Preencher desbloqueia o
-   "aberto agora" na busca e atualiza sozinho o texto da página e o FAQ.
+7. **Confirmar os horários** (`locations[1].openingHours`) — está com horário comercial,
+   Seg–Sex 8h–12h e 14h–18h, **igual ao de Bonito**. ⚠️ Os dois consultórios ficam assim
+   declarados abertos nos mesmos dias e horários, a ~350 km um do outro: o "aberto agora" da
+   busca acende para as duas unidades ao mesmo tempo, e cada página promete atendimento de
+   segunda a sexta. Se a agenda for dividida (Ponta Porã em dias fixos, por exemplo), liste
+   só os dias reais aqui **e** no Google Business Profile da unidade — é com ele que o Google
+   compara.
 8. **Conferir o endereço e o CEP** — "Rua 18 de Julho, 44 — Centro" veio por mensagem; o CEP
    (79900-000) é o geral da cidade. Confirme os dois contra o Google Business Profile da
    unidade antes de publicar.

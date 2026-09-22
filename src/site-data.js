@@ -205,12 +205,19 @@ export const site = {
       },
       // [CONFERIR] Coordenadas aproximadas do centro de Ponta Pora-MS.
       geo: { lat: -22.5364, lng: -55.7256 },
-      // [PREENCHER] Dias e horarios do consultorio de Ponta Pora. Enquanto a
-      // lista estiver vazia, a pagina mostra "Consulte os horários pelo
-      // WhatsApp" e o JSON-LD omite o openingHoursSpecification — que e o certo:
-      // horario inventado diverge do Google Business Profile e prejudica o
-      // ranqueamento local da unidade.
-      openingHours: [],
+      // [CONFERIR] Horario comercial, igual ao de Bonito.
+      //
+      // ⚠️ Os dois consultorios ficam declarados abertos nos MESMOS dias e
+      // horarios, e eles estao a ~350 km um do outro. Isso aparece em dois
+      // lugares que a paciente ve: o "aberto agora" da busca do Google acende
+      // para as duas unidades ao mesmo tempo, e cada pagina promete atendimento
+      // de segunda a sexta. Se a agenda for dividida (por exemplo, Ponta Pora em
+      // dias fixos do mes), o certo e listar so os dias reais aqui — e o mesmo
+      // no Google Business Profile da unidade, que e com quem o Google compara.
+      openingHours: [
+        { days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'], opens: '08:00', closes: '12:00' },
+        { days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'], opens: '14:00', closes: '18:00' },
+      ],
       // [CONFERIR] Municipios vizinhos de Ponta Pora. Ajuste com a Dra. Claudia:
       // `areaServed` e uma declaracao de onde vem a paciente, nao uma lista de
       // cidades proximas no mapa.
