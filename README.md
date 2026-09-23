@@ -149,18 +149,15 @@ lado. As quatro URLs (busca, rota, Waze e embed) saem da **mesma** string de end
 
 ### Depoimentos (seção opcional)
 
-A seção `#depoimentos` existe, mas hoje está com **textos fictícios** e por isso o build de
-produção **falha de propósito**:
+A seção `#depoimentos` existe, mas hoje está com **textos fictícios** (`placeholder: true`).
+Por isso ela só aparece em `hom`/`dev`, para avaliar o layout: o build de **produção** apaga
+o bloco `<!--#opt:depoimentos-->` inteiro do HTML gerado. O resumo do build mostra em que
+situação ela saiu (linha `depoimentos`).
 
-```
-Error: SITE_ENV=prod com depoimentos marcados como placeholder (ficticios).
-```
-
-Para resolver, em `src/site-data.js` → `testimonials`: ou trocar por depoimentos reais e
-autorizados (`placeholder: false`), ou desligar a seção (`enabled: false`, que apaga o bloco
-`<!--#opt:depoimentos-->` inteiro do HTML gerado). Em `hom`/`dev` a seção aparece normalmente,
-sem nenhum aviso na tela — quem revisar a homologação precisa saber, por este README, que os
-textos ainda são de exemplo.
+Para publicá-la, em `src/site-data.js` → `testimonials`: trocar por depoimentos reais e
+autorizados e pôr `placeholder: false`. Para tirá-la também da homologação: `enabled: false`.
+Em `hom` a seção aparece sem nenhum aviso na tela — quem revisar a homologação precisa saber,
+por este README, que os textos ainda são de exemplo.
 
 ⚠️ **Antes de ativar, confirmar com o CRM-MS**: as normas do CFM sobre publicidade médica
 restringem depoimento de paciente como peça publicitária — a mesma restrição já registrada
@@ -317,9 +314,9 @@ propriedade dela, e continua linkado no rodapé.
    um segundo endereço (Clovis Bevilaqua, 36) que não está mais em uso.
 4. **Coordenadas** (`locations[].geo`) — as duas são aproximadas (centro da cidade).
    Pegue as exatas no Google Maps: botão direito no ponto → copiar coordenadas.
-5. **Decidir a seção de depoimentos** (`testimonials`) — hoje os textos são fictícios e o
-   build de produção falha por causa disso. Ou entram depoimentos reais e autorizados, ou a
-   seção é desligada. Confirmar antes a restrição do CFM (ver "Depoimentos", acima).
+5. **Decidir a seção de depoimentos** (`testimonials`) — hoje os textos são fictícios, e por
+   isso a seção só existe em homologação. Ou entram depoimentos reais e autorizados, ou a
+   seção é desligada de vez. Confirmar antes a restrição do CFM (ver "Depoimentos", acima).
 6. **Revisar serviços e FAQ** (`services`, `faq`) — os textos foram ampliados com termos de
    busca ("pré-natal", "exames preventivos", "reposição hormonal", "laser íntimo", extraídos
    da própria bio do Instagram) e há uma pergunta nova sobre reposição hormonal. Confirme

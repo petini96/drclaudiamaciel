@@ -382,19 +382,12 @@ const credentialCards = site.credentials
 // --- depoimentos ------------------------------------------------------------
 // TRAVA DE SEGURANCA, no mesmo espirito da que impede um build indexavel com a
 // URL de homologacao (topo do arquivo). Depoimento ficticio no site de uma
-// medica e publicidade enganosa (CDC, art. 37) e risco etico perante o CRM;
-// o custo de descobrir isso DEPOIS de publicar nao se compara ao de um build
-// que falha aqui. O contexto completo esta em site-data.js -> testimonials.
+// medica e publicidade enganosa (CDC, art. 37) e risco etico perante o CRM.
+// Com `placeholder: true` a secao so existe em hom/dev, para avaliar o layout:
+// o build de producao a remove inteira. O contexto completo esta em
+// site-data.js -> testimonials.
 const tst = site.testimonials;
-if (isProd && tst.enabled && tst.placeholder) {
-  throw new Error(
-    'SITE_ENV=prod com depoimentos marcados como placeholder (ficticios).\n' +
-      '  Resolva de uma destas formas em src/site-data.js -> testimonials:\n' +
-      '  1) troque os itens por depoimentos reais, autorizados por escrito, e ponha placeholder: false;\n' +
-      '  2) desligue a secao com enabled: false ate ter os textos reais.\n' +
-      '  Leia o comentario da chave antes: ha restricao do CFM ao uso de depoimento em publicidade medica.',
-  );
-}
+const showTestimonials = tst.enabled && !(isProd && tst.placeholder);
 
 // Sem estrela e sem nota, de proposito: nota media no proprio site e review de
 // LocalBusiness auto-declarado, contra as diretrizes do Google (README > SEO).
@@ -1183,7 +1176,7 @@ function fill(tpl, loc) {
 }
 
 const page = fill(
-  optionalBlocks(typeWords(html), { depoimentos: tst.enabled })
+  optionalBlocks(typeWords(html), { depoimentos: showTestimonials })
     .replace('/*__STYLES__*/', css)
     .replaceAll('__HEAD_SEO__', headSeo)
     .replaceAll('__SERVICE_CARDS__', serviceCards)
@@ -1496,4 +1489,5 @@ console.log(`manchete           ${(typedTotalMs / 1000).toFixed(2)}s de escrita`
 console.log(`site url           ${siteUrl}`);
 console.log(`ambiente           ${siteEnv}${isProd ? ' (indexavel)' : ' (noindex + robots.txt Disallow)'}`);
 console.log(`analytics          ${gaId ? `${gaId}${isProd ? '' : ' + debug_mode'}` : 'desligado (GA_MEASUREMENT_ID vazio)'}`);
+console.log(`depoimentos        ${showTestimonials ? (tst.placeholder ? 'ficticios (so fora de producao)' : 'publicados') : 'fora do HTML'}`);
 if (!site.doctor.crm) console.warn('AVISO: src/site-data.js -> doctor.crm vazio (exigido pelo CFM na publicidade medica).');

@@ -404,9 +404,9 @@ export const site = {
   // ⚠️ CONTEUDO PROVISORIO — NAO PUBLICAR COMO ESTA.
   //
   // Os textos abaixo sao FICTICIOS, escritos apenas para avaliar o layout da
-  // secao. Enquanto `placeholder` for true o build de PRODUCAO falha de
-  // proposito (a trava fica no build.mjs, logo depois dos cartoes de formacao):
-  // depoimento inventado no site de uma medica e publicidade enganosa (CDC,
+  // secao. Enquanto `placeholder` for true a secao so aparece em homologacao e
+  // no dev; o build de PRODUCAO a remove inteira (a trava fica no build.mjs,
+  // logo depois dos cartoes de formacao): depoimento inventado no site de uma medica e publicidade enganosa (CDC,
   // art. 37) — e o tipo de coisa que, num site de saude, custa muito mais caro
   // do que o layout bonito que ela paga.
   //
