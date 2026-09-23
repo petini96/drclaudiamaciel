@@ -427,11 +427,9 @@ pintou conteúdo" — zerando as quatro categorias.
    endereço. *Só inclua URL conferida: link quebrado em `sameAs` atrapalha em vez de ajudar.*
 3. **Revisar serviços e FAQ** — confirmar que os textos ampliados descrevem exatamente o que
    é oferecido no consultório.
-4. **Horários de Ponta Porã** (`locations[1].openingHours`) — horário comercial, igual ao de
-   Bonito. ⚠️ As duas unidades ficam com `openingHoursSpecification` idêntico, a ~350 km uma
-   da outra: o "aberto agora" acende para as duas ao mesmo tempo. Se a agenda for dividida,
-   liste só os dias reais — e os mesmos no Google Business Profile de cada unidade, que é o
-   par que o Google compara.
+4. **Horários de Ponta Porã** (`locations[1].openingHours`) — sexta 12h–17h e sábado
+   8h–17h, informados pela Dra. Claudia. Conferir que o Google Business Profile da unidade
+   está com os mesmos horários: é o par que o Google compara.
 5. **Endereço, CEP e região de Ponta Porã** — o endereço veio por mensagem, o CEP é o geral
    da cidade e a `areaServed` foi montada por proximidade geográfica. Conferir os três com a
    Dra. Claudia e contra o Google Business Profile da unidade.

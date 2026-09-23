@@ -265,8 +265,9 @@ const fillText = (s, loc) => {
         '{endereco}': esc(loc.fullAddress),
         '{cidade}': esc(loc.label),
         // Sem horario confirmado o texto continua verdadeiro em vez de sair
-        // vazio — ver o comentario de `openingHours` no site-data.
-        '{horario}': esc(loc.hoursText || 'confirmado pelo WhatsApp'),
+        // vazio — ver o comentario de `openingHours` no site-data. Minusculo
+        // porque o marcador entra no meio da frase ("o atendimento e sexta...").
+        '{horario}': esc((loc.hoursText || 'confirmado pelo WhatsApp').toLowerCase()),
       }
     : baseVars;
   return Object.entries(vars).reduce((acc, [k, v]) => acc.split(k).join(v), esc(s));
