@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile, stat, rm, copyFile } from 'node:fs/promises';
 import { gzipSync } from 'node:zlib';
+import { createHash } from 'node:crypto';
 import { site } from './src/site-data.js';
 
 const siteUrl = (process.env.SITE_URL || site.url).replace(/\/+$/, '');
@@ -82,7 +83,9 @@ const images = {};
 for (const name of imageNames) {
   const bytes = await readFile(`assets/${name}.webp`);
   const { w, h } = webpSize(bytes);
-  images[name] = { path: `/assets/${name}.webp`, url: `${siteUrl}/assets/${name}.webp`, w, h };
+  const hash = createHash('md5').update(bytes).digest('hex').slice(0, 8);
+  const fileHashed = `${name}.${hash}.webp`;
+  images[name] = { path: `/assets/${fileHashed}`, url: `${siteUrl}/assets/${fileHashed}`, w, h, dest: fileHashed };
 }
 
 // --- ativos de marca --------------------------------------------------------
@@ -1350,7 +1353,10 @@ for (const { route, html: out } of pages) {
 // dist/ e recriado (ver comentario no topo).
 await rm('dist', { recursive: true, force: true });
 await mkdir('dist/assets', { recursive: true });
-for (const name of imageNames) await copyFile(`assets/${name}.webp`, `dist/assets/${name}.webp`);
+for (const [name, img] of Object.entries(images)) {
+  await copyFile(`assets/${name}.webp`, `dist/assets/${img.dest}`);
+  await copyFile(`assets/${name}.webp`, `dist/assets/${name}.webp`);
+}
 for (const { path } of Object.values(brand)) await copyFile(path, `dist/${path}`);
 for (const file of iconFiles) await copyFile(`assets/${file}`, `dist/${file}`);
 
